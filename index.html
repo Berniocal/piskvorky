@@ -1,0 +1,1523 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+<title>Piškvorky – online + žebříček</title>
+<meta name="theme-color" content="#0b1323" />
+<style>
+  :root{
+    --bg:#0b1323; --bg2:#0f1722; --text:#e6eef8; --muted:#9fb0c7;
+    --r:18px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bot: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background: linear-gradient(180deg,var(--bg),var(--bg2));
+    color:var(--text);
+    font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    overscroll-behavior:none;
+    -webkit-tap-highlight-color:transparent;
+    touch-action:manipulation;
+    user-select:none;
+  }
+  #app{
+    width:100vw;height:100dvh;
+    display:flex;flex-direction:column;
+    padding: var(--safe-top) var(--safe-right) var(--safe-bot) var(--safe-left);
+  }
+
+  .screen{flex:1;display:none;position:relative;overflow:hidden;}
+  .screen.active{display:flex;flex-direction:column;}
+
+  .wrap{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    padding: 18px;
+    overflow:auto;
+  }
+  .card{
+    border-radius: 22px;
+    background: rgba(15,23,34,0.70);
+    outline: 1px solid rgba(255,255,255,0.10);
+    box-shadow: 0 18px 50px rgba(0,0,0,0.35);
+    padding: 14px;
+  }
+
+  .row2{
+    display:grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items:center;
+    padding: 8px 0;
+  }
+  .label{font-weight:900;opacity:.95}
+  .hint{color: rgba(255,255,255,0.60); font-weight:700; font-size:12px; margin-top: 2px;}
+
+  .inp{
+    width:100%;
+    height:46px;
+    border-radius: 16px;
+    border:0;
+    background: rgba(0,0,0,0.22);
+    outline: 1px solid rgba(255,255,255,0.10);
+    color: rgba(255,255,255,0.92);
+    padding: 0 12px;
+    font-weight: 900;
+    letter-spacing: .2px;
+  }
+
+  .btn{
+    width:100%;
+    height:56px;
+    border-radius: 18px;
+    border:0;
+    background: rgba(255,255,255,0.08);
+    outline: 1px solid rgba(255,255,255,0.10);
+    color: rgba(255,255,255,0.92);
+    font-weight: 950;
+    font-size: 18px;
+    text-align:left;
+    padding: 0 16px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .btn:active{ transform: translateY(1px); opacity:.92 }
+  .btn.primary{
+    background: rgba(96,165,250,0.22);
+    outline: 1px solid rgba(96,165,250,0.35);
+  }
+  .btn.good{
+    background: rgba(34,197,94,0.18);
+    outline: 1px solid rgba(34,197,94,0.28);
+  }
+  .btn.bad{
+    background: rgba(239,68,68,0.16);
+    outline: 1px solid rgba(239,68,68,0.26);
+  }
+  .btn[disabled]{opacity:.35}
+
+  .pill{
+    display:inline-flex;align-items:center;justify-content:center;
+    height: 34px;padding: 0 10px;border-radius: 999px;
+    background: rgba(0,0,0,0.22);
+    outline: 1px solid rgba(255,255,255,0.10);
+    font-weight: 900;
+    letter-spacing: .2px;
+    font-variant-numeric: tabular-nums;
+  }
+  .pill.green{ color: rgba(34,197,94,0.95); }
+  .pill.red{ color: rgba(239,68,68,0.95); }
+
+  /* HUD for game */
+  .hud{
+    position:absolute;
+    top: calc(10px + var(--safe-top));
+    left: calc(10px + var(--safe-left));
+    right: calc(10px + var(--safe-right));
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    z-index:5;
+    pointer-events:none;
+  }
+  .hud .row{display:flex; gap:10px; pointer-events:auto; align-items:center;}
+  .iconBtn{
+    width: 46px;height: 46px;border-radius: 16px;border:0;
+    background: rgba(0,0,0,0.28);
+    outline: 1px solid rgba(255,255,255,0.12);
+    display:flex;align-items:center;justify-content:center;
+    color: rgba(255,255,255,0.92);
+    font-size: 20px;font-weight: 900;
+  }
+  .iconBtn:active{transform: translateY(1px); opacity:.9}
+  .iconBtn[disabled]{opacity:.35}
+
+  .turnBtn{
+    width: 46px;height: 46px;border-radius: 999px;border:0;
+    background: rgba(255,255,255,0.18);
+    outline: 1px solid rgba(255,255,255,0.12);
+    box-shadow: inset 0 0 0 4px rgba(0,0,0,0.25);
+    pointer-events:auto;
+  }
+  .clockPill{
+    min-width: 74px;height: 46px;padding: 0 12px;border-radius: 16px;
+    display:flex;align-items:center;justify-content:center;
+    font-weight: 950;letter-spacing: .3px;
+    background: rgba(0,0,0,0.28);
+    outline: 1px solid rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.92);
+    font-variant-numeric: tabular-nums;
+  }
+  .clockPill.active{
+    outline: 1px solid rgba(96,165,250,0.40);
+    box-shadow: 0 0 0 2px rgba(96,165,250,0.10) inset;
+  }
+  canvas{width:100%;height:100%;display:block;}
+
+  /* Bottom modal */
+  #sheet{
+    position:absolute; inset:0;
+    display:none; align-items:flex-end; justify-content:center;
+    z-index:30;
+    background: rgba(0,0,0,0.35);
+    padding: 18px;
+  }
+  #sheet.open{display:flex}
+  .panel{
+    width:min(560px, 96vw);
+    border-radius: 22px;
+    background: rgba(15,23,34,0.92);
+    outline: 1px solid rgba(255,255,255,0.10);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+    padding: 12px;
+  }
+  .panelTitle{font-weight:950; opacity:.95; padding: 4px 6px 10px;}
+  .panelRow{display:flex; gap:10px; align-items:center; padding: 6px;}
+  .panelRow .inp{flex:1;}
+  .tinyBtn{
+    height:46px; min-width:46px;
+    border-radius: 16px; border:0;
+    background: rgba(255,255,255,0.08);
+    outline: 1px solid rgba(255,255,255,0.10);
+    color: rgba(255,255,255,0.92);
+    font-weight: 950;
+    font-size: 18px;
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  /* Toast */
+  .toast{
+    position:absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(16px + var(--safe-bot));
+    z-index: 40;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: rgba(0,0,0,0.40);
+    outline: 1px solid rgba(255,255,255,0.10);
+    color: rgba(255,255,255,0.88);
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: .2px;
+    display:none;
+    white-space:nowrap;
+    max-width:min(92vw,520px);
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .toast.show{ display:block; }
+
+  pre{
+    white-space:pre-wrap;
+    word-break:break-word;
+    font: 13px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    color: rgba(255,255,255,0.78);
+    margin-top: 8px;
+  }
+</style>
+</head>
+
+<body>
+<div id="app">
+
+  <!-- SCREEN: FIRST RUN (nickname only) -->
+  <div id="scrNick" class="screen active">
+    <div class="wrap">
+      <div class="card">
+        <div class="row2">
+          <div>
+            <div class="label">Přezdívka</div>
+            <div class="hint">Musí být volná. Bez mezer je nejlepší.</div>
+          </div>
+          <button id="btnAltLogin" class="iconBtn" title="Přihlášení kódem">🔑</button>
+        </div>
+        <input id="inNick" class="inp" placeholder="např. Jenda" maxlength="20" autocomplete="nickname" />
+        <div style="height:12px"></div>
+        <button id="btnNickOk" class="btn primary"><span>Potvrdit</span><span>→</span></button>
+        <div class="hint" style="margin-top:10px;">Při prvním potvrzení dostaneš svůj 5místný kód.</div>
+      </div>
+    </div>
+    <div id="toast1" class="toast"></div>
+  </div>
+
+  <!-- SCREEN: SHOW USER CODE -->
+  <div id="scrCode" class="screen">
+    <div class="wrap">
+      <div class="card">
+        <div class="label">Tvůj kód</div>
+        <div class="hint">Ulož si ho bezpečně. Bez něj se jinde nepřihlásíš.</div>
+        <div style="height:12px"></div>
+        <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;">
+          <span class="pill" id="myCodePill">_____</span>
+          <button id="btnCopyCode" class="iconBtn" title="Kopírovat">⧉</button>
+        </div>
+        <pre id="codeExplain"></pre>
+        <div style="height:12px"></div>
+        <button id="btnGoMenu" class="btn primary"><span>Pokračovat</span><span>→</span></button>
+      </div>
+    </div>
+    <div id="toast2" class="toast"></div>
+  </div>
+
+  <!-- SCREEN: MENU -->
+  <div id="scrMenu" class="screen">
+    <div class="wrap">
+      <div class="card">
+        <div class="row2">
+          <div>
+            <div class="label" id="meLabel">—</div>
+            <div class="hint">Piškvorky (X/O), 15×15, 5 v řadě</div>
+          </div>
+          <button id="btnLogout" class="iconBtn" title="Odhlásit">⟵</button>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;">
+          <span class="pill" id="meRating">ELO —</span>
+          <span class="pill" id="meDelta24">±0</span>
+          <span class="pill" id="meTodayPairs">Dnes</span>
+        </div>
+      </div>
+
+      <button id="btnLocal" class="btn"><span>Trénink (na telefonu)</span><span>🎯</span></button>
+      <button id="btnOnlineTrain" class="btn"><span>Online trénink</span><span>🔗</span></button>
+      <button id="btnRanked" class="btn primary"><span>Bodovaná hra</span><span>🏆</span></button>
+      <button id="btnLadder" class="btn"><span>Žebříček</span><span>📈</span></button>
+
+      <div class="card">
+        <div class="hint" id="menuHint">—</div>
+      </div>
+    </div>
+    <div id="toast3" class="toast"></div>
+  </div>
+
+  <!-- SCREEN: LADDER -->
+  <div id="scrLadder" class="screen">
+    <div class="wrap">
+      <div class="card">
+        <div class="row2">
+          <div>
+            <div class="label">Žebříček</div>
+            <div class="hint">Nick | rating | změna za 24h</div>
+          </div>
+          <div style="display:flex;gap:10px;">
+            <button id="btnLadRefresh" class="iconBtn" title="Obnovit">↻</button>
+            <button id="btnLadBack" class="iconBtn" title="Zpět">⟵</button>
+          </div>
+        </div>
+        <pre id="ladderPre">Načítám…</pre>
+      </div>
+    </div>
+    <div id="toast4" class="toast"></div>
+  </div>
+
+  <!-- SCREEN: GAME -->
+  <div id="scrGame" class="screen">
+    <div class="hud">
+      <div class="row">
+        <button id="btnBack" class="iconBtn" title="Zpět">⟵</button>
+      </div>
+      <div class="row">
+        <div id="clockA" class="clockPill" title="Hráč A">10:00</div>
+        <button id="btnTurn" class="turnBtn" title="Na tahu"></button>
+        <div id="clockB" class="clockPill" title="Hráč B">10:00</div>
+        <button id="btnResign" class="iconBtn" title="Vzdát">🏳️</button>
+      </div>
+    </div>
+    <canvas id="board"></canvas>
+
+    <!-- Sheet for online training create/join / ranked waiting -->
+    <div id="sheet" aria-hidden="true">
+      <div class="panel">
+        <div class="panelTitle" id="sheetTitle">—</div>
+        <div id="sheetBody"></div>
+      </div>
+    </div>
+
+    <div id="toast5" class="toast"></div>
+  </div>
+
+</div>
+
+<script type="module">
+/* ============================================================
+   Firebase
+============================================================ */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
+import {
+  getAuth, signInAnonymously, onAuthStateChanged, signOut
+} from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction,
+  collection, query, where, orderBy, limit, getDocs, addDoc,
+  serverTimestamp, onSnapshot, deleteDoc
+} from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+
+/* ======== TVŮJ FIREBASE CONFIG ======== */
+const FIREBASE_CONFIG = window.FIREBASE_CONFIG || {
+  apiKey: "PASTE",
+  authDomain: "PASTE",
+  projectId: "PASTE",
+  storageBucket: "PASTE",
+  messagingSenderId: "PASTE",
+  appId: "PASTE"
+};
+/* ====================================== */
+
+const app = initializeApp(FIREBASE_CONFIG);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+/* ============================================================
+   UI
+============================================================ */
+const $ = (s)=>document.querySelector(s);
+
+const scrNick = $("#scrNick");
+const scrCode = $("#scrCode");
+const scrMenu = $("#scrMenu");
+const scrLadder = $("#scrLadder");
+const scrGame = $("#scrGame");
+
+const toast1 = $("#toast1");
+const toast2 = $("#toast2");
+const toast3 = $("#toast3");
+const toast4 = $("#toast4");
+const toast5 = $("#toast5");
+
+const inNick = $("#inNick");
+const btnNickOk = $("#btnNickOk");
+const btnAltLogin = $("#btnAltLogin");
+
+const myCodePill = $("#myCodePill");
+const btnCopyCode = $("#btnCopyCode");
+const btnGoMenu = $("#btnGoMenu");
+const codeExplain = $("#codeExplain");
+
+const meLabel = $("#meLabel");
+const meRating = $("#meRating");
+const meDelta24 = $("#meDelta24");
+const meTodayPairs = $("#meTodayPairs");
+const btnLogout = $("#btnLogout");
+const menuHint = $("#menuHint");
+
+const btnLocal = $("#btnLocal");
+const btnOnlineTrain = $("#btnOnlineTrain");
+const btnRanked = $("#btnRanked");
+const btnLadder = $("#btnLadder");
+
+const ladderPre = $("#ladderPre");
+const btnLadRefresh = $("#btnLadRefresh");
+const btnLadBack = $("#btnLadBack");
+
+const btnBack = $("#btnBack");
+const btnResign = $("#btnResign");
+const btnTurn = $("#btnTurn");
+const clockA = $("#clockA");
+const clockB = $("#clockB");
+
+const board = $("#board");
+const ctx = board.getContext("2d");
+
+const sheet = $("#sheet");
+const sheetTitle = $("#sheetTitle");
+const sheetBody = $("#sheetBody");
+
+function showToast(el, msg, ms=1300){
+  el.textContent = msg;
+  el.classList.add("show");
+  setTimeout(()=> el.classList.remove("show"), ms);
+}
+function showScreen(el){
+  [scrNick,scrCode,scrMenu,scrLadder,scrGame].forEach(x=>x.classList.remove("active"));
+  el.classList.add("active");
+}
+function vib(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms);}catch(e){} }
+
+function normalizeNick(n){
+  return (n||"").trim().replace(/\s+/g,"").slice(0,20);
+}
+function randomUserCode5(){
+  // 5 znaků: bez 0/O/I/1 (aby se nepletlo)
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out="";
+  for(let i=0;i<5;i++) out += alphabet[Math.floor(Math.random()*alphabet.length)];
+  return out;
+}
+function randomRoomCode5(){
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out="";
+  for(let i=0;i<5;i++) out += alphabet[Math.floor(Math.random()*alphabet.length)];
+  return out;
+}
+function hashLite(s){
+  s = String(s||"");
+  let h=2166136261;
+  for(let i=0;i<s.length;i++){
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h>>>0).toString(16).toUpperCase();
+}
+function dayKeyLocal(){
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const dd = String(d.getDate()).padStart(2,"0");
+  return `${y}${m}${dd}`;
+}
+function pairKey(u1,u2){
+  const a = [u1,u2].sort();
+  return `${dayKeyLocal()}_${a[0]}_${a[1]}`;
+}
+
+function openSheet(title, bodyHtml){
+  sheetTitle.textContent = title;
+  sheetBody.innerHTML = bodyHtml;
+  sheet.classList.add("open");
+  sheet.setAttribute("aria-hidden","false");
+}
+function closeSheet(){
+  sheet.classList.remove("open");
+  sheet.setAttribute("aria-hidden","true");
+  sheetBody.innerHTML = "";
+}
+sheet.addEventListener("pointerdown",(e)=>{ if(e.target===sheet) closeSheet(); });
+
+/* ============================================================
+   Auth + account
+============================================================ */
+let authUid = null;     // firebase auth uid
+let accountId = null;   // our account doc id (stable)
+let me = null;
+let unsubMe = null;
+
+async function ensureAnon(){
+  if(auth.currentUser) return auth.currentUser;
+  const {user} = await signInAnonymously(auth);
+  return user;
+}
+
+function setMeUI(){
+  if(!me) return;
+  meLabel.textContent = `@${me.nick}`;
+  meRating.textContent = `ELO ${me.rating ?? 1000}`;
+
+  const d = me.delta24 ?? 0;
+  meDelta24.textContent = (d>=0? `+${d}` : `${d}`);
+  meDelta24.classList.toggle("green", d>0);
+  meDelta24.classList.toggle("red", d<0);
+
+  meTodayPairs.textContent = `Dnes: ${me.ratedToday ?? 0}`;
+}
+
+async function loadMe(){
+  if(!accountId) return;
+  const snap = await getDoc(doc(db,"users",accountId));
+  me = snap.exists() ? snap.data() : null;
+}
+
+function watchMe(){
+  if(unsubMe) unsubMe();
+  unsubMe = onSnapshot(doc(db,"users",accountId),(snap)=>{
+    if(!snap.exists()) return;
+    me = snap.data();
+    if(scrMenu.classList.contains("active")) setMeUI();
+  });
+}
+
+async function logoutAll(){
+  try{ if(unsubMe) unsubMe(); }catch(e){}
+  unsubMe=null; me=null; accountId=null;
+  localStorage.removeItem("pisk_accountId");
+  localStorage.removeItem("pisk_nick");
+  localStorage.removeItem("pisk_userCode");
+  try{ await signOut(auth); }catch(e){}
+  showScreen(scrNick);
+}
+
+/* ============================================================
+   First-run nickname -> create account
+   Collections:
+     nicks/{nickLower} -> {accountId}
+     users/{accountId} -> profile
+============================================================ */
+async function createAccountWithNick(nick){
+  nick = normalizeNick(nick);
+  if(nick.length < 2){ showToast(toast1,"Krátká přezdívka"); return; }
+
+  const user = await ensureAnon();
+  authUid = user.uid;
+
+  const nickLower = nick.toLowerCase();
+  const userCode = randomUserCode5();
+  const codeHash = hashLite(userCode);
+
+  // Create accountId independent of authUid (so it can be used on other device too)
+  // We'll use Firestore auto-id for account
+  const accRef = doc(collection(db,"users"));
+  const newAccountId = accRef.id;
+
+  try{
+    await runTransaction(db, async (tx)=>{
+      const nickRef = doc(db,"nicks",nickLower);
+      const nickSnap = await tx.get(nickRef);
+      if(nickSnap.exists()) throw new Error("NICK_TAKEN");
+
+      tx.set(nickRef, { accountId: newAccountId, createdAt: serverTimestamp() });
+
+      tx.set(accRef, {
+        nick, nickLower,
+        codeHash,
+        rating: 1000,
+        delta24: 0,     // + / - za posledních 24h (zjednodušeně udržujeme klientem)
+        ratedToday: 0,  // kolik rated her dnes odehráno (zjednodušeně)
+        createdAt: serverTimestamp(),
+        lastSeenAt: serverTimestamp()
+      }, {merge:false});
+    });
+
+    accountId = newAccountId;
+    localStorage.setItem("pisk_accountId", accountId);
+    localStorage.setItem("pisk_nick", nick);
+    localStorage.setItem("pisk_userCode", userCode);
+
+    // show code screen
+    myCodePill.textContent = userCode;
+    codeExplain.textContent =
+`Ulož si kód: ${userCode}
+
+Když budeš chtít hrát na jiném zařízení:
+- otevřeš aplikaci
+- klikneš na 🔑
+- zadáš přezdívku a kód`;
+
+    showScreen(scrCode);
+  }catch(e){
+    if(String(e.message||"").includes("NICK_TAKEN")){
+      showToast(toast1,"Přezdívka už je zabraná");
+    }else{
+      console.error(e);
+      showToast(toast1,"Chyba");
+    }
+  }
+}
+
+/* Alternate login with nick + code (minimal, hidden behind 🔑) */
+async function loginWithNickAndCode(){
+  const nick = normalizeNick(prompt("Přezdívka:") || "");
+  if(!nick){ return; }
+  const code = (prompt("Tvůj 5místný kód:") || "").trim().toUpperCase();
+  if(code.length < 5){ showToast(toast1,"Chybí kód"); return; }
+
+  await ensureAnon();
+
+  const nickLower = nick.toLowerCase();
+  const nickRef = doc(db,"nicks",nickLower);
+  const nickSnap = await getDoc(nickRef);
+  if(!nickSnap.exists()){ showToast(toast1,"Neexistuje"); return; }
+
+  const accId = nickSnap.data().accountId;
+  const userSnap = await getDoc(doc(db,"users",accId));
+  if(!userSnap.exists()){ showToast(toast1,"Chyba účtu"); return; }
+
+  const data = userSnap.data();
+  if((data.codeHash||"") !== hashLite(code)){
+    showToast(toast1,"Špatný kód"); return;
+  }
+
+  accountId = accId;
+  localStorage.setItem("pisk_accountId", accountId);
+  localStorage.setItem("pisk_nick", nick);
+  localStorage.setItem("pisk_userCode", code);
+
+  await loadMe();
+  watchMe();
+  setMeUI();
+  showScreen(scrMenu);
+}
+
+/* ============================================================
+   Board game core (15x15, 5 in row)
+============================================================ */
+const N = 15;
+const WIN = 5;
+
+function resizeCanvasToScreen(){
+  const dpr = window.devicePixelRatio || 1;
+  const rect = board.getBoundingClientRect();
+  board.width = Math.floor(rect.width * dpr);
+  board.height = Math.floor(rect.height * dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+function clear(){
+  const w = board.getBoundingClientRect().width;
+  const h = board.getBoundingClientRect().height;
+  ctx.clearRect(0,0,w,h);
+  const g = ctx.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,"rgba(255,255,255,0.03)");
+  g.addColorStop(1,"rgba(0,0,0,0.20)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,w,h);
+}
+function drawRoundedRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+function getSquareArea(){
+  const W = board.getBoundingClientRect().width;
+  const H = board.getBoundingClientRect().height;
+  const topPad = 70;
+  const pad = 18;
+  const availW = W - pad*2;
+  const availH = H - pad*2 - topPad;
+  const size = Math.max(240, Math.floor(Math.min(availW, availH)));
+  const ox = Math.floor((W - size)/2);
+  const oy = Math.floor((H - size)/2 + topPad/2);
+  return {W,H,size,ox,oy};
+}
+function canvasPos(e){
+  const r = board.getBoundingClientRect();
+  return {x: e.clientX - r.left, y: e.clientY - r.top};
+}
+function fmt(ms){
+  ms = Math.max(0, ms|0);
+  const s = Math.floor(ms/1000);
+  const m = Math.floor(s/60);
+  const ss = s%60;
+  return String(m).padStart(2,"0")+":"+String(ss).padStart(2,"0");
+}
+function setTurnColor(c){ btnTurn.style.background = c; }
+
+function checkWinFrom(boardStr, x, y, ch){
+  const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+  const inside = (a,b)=> a>=0 && a<N && b>=0 && b<N;
+  const idx = (a,b)=> b*N+a;
+
+  for(const [dx,dy] of dirs){
+    let cnt=1;
+    for(let s=1;s<WIN;s++){
+      const nx=x+dx*s, ny=y+dy*s;
+      if(inside(nx,ny) && boardStr[idx(nx,ny)]===ch) cnt++; else break;
+    }
+    for(let s=1;s<WIN;s++){
+      const nx=x-dx*s, ny=y-dy*s;
+      if(inside(nx,ny) && boardStr[idx(nx,ny)]===ch) cnt++; else break;
+    }
+    if(cnt>=WIN) return true;
+  }
+  return false;
+}
+
+function renderBoard(boardStr){
+  resizeCanvasToScreen();
+  clear();
+  const {size,ox,oy} = getSquareArea();
+
+  ctx.fillStyle="rgba(255,255,255,0.04)";
+  drawRoundedRect(ox,oy,size,size,18); ctx.fill();
+  ctx.strokeStyle="rgba(255,255,255,0.10)"; ctx.lineWidth=2; ctx.stroke();
+
+  const cell=size/N;
+  ctx.strokeStyle="rgba(255,255,255,0.10)";
+  ctx.lineWidth=1.5;
+  for(let i=0;i<=N;i++){
+    ctx.beginPath(); ctx.moveTo(ox+i*cell,oy); ctx.lineTo(ox+i*cell,oy+size); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ox,oy+i*cell); ctx.lineTo(ox+size,oy+i*cell); ctx.stroke();
+  }
+
+  for(let y=0;y<N;y++){
+    for(let x=0;x<N;x++){
+      const ch = boardStr[y*N+x];
+      if(ch===".") continue;
+      const cx=ox+x*cell+cell/2;
+      const cy=oy+y*cell+cell/2;
+      const r=cell*0.32;
+      ctx.lineWidth=Math.max(3, cell*0.08);
+
+      if(ch==="X"){
+        ctx.strokeStyle="rgba(0,0,0,0.86)";
+        ctx.beginPath(); ctx.moveTo(cx-r,cy-r); ctx.lineTo(cx+r,cy+r); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx+r,cy-r); ctx.lineTo(cx-r,cy+r); ctx.stroke();
+      }else{
+        ctx.strokeStyle="rgba(255,255,255,0.92)";
+        ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke();
+      }
+    }
+  }
+}
+
+/* ============================================================
+   Game modes & online state
+============================================================ */
+let mode = null; // "local" | "trainOnline" | "ranked"
+let local = null;
+
+let gameId = null;
+let game = null;
+let unsubGame = null;
+
+let tickTimer = null;
+
+function stopTick(){ if(tickTimer){ clearInterval(tickTimer); tickTimer=null; } }
+function startTick(){
+  stopTick();
+  tickTimer = setInterval(()=> {
+    if(!game || game.status!=="active") return;
+    // purely visual countdown from last snapshot (client-side)
+    // Real fairness would be server-side; this is good enough for casual.
+    const now = Date.now();
+    const last = (game._lastClientNow ?? now);
+    const dt = Math.max(0, now - last);
+    game._lastClientNow = now;
+
+    // only decrement on active player's turn
+    const p = game.turnPerson ?? 0;
+    game.timeLeft = game.timeLeft || [600000,600000];
+    game.timeLeft[p] = Math.max(0, game.timeLeft[p] - dt);
+
+    clockA.textContent = fmt(game.timeLeft[0]);
+    clockB.textContent = fmt(game.timeLeft[1]);
+    clockA.classList.toggle("active", p===0);
+    clockB.classList.toggle("active", p===1);
+
+    if(game.timeLeft[p] <= 0){
+      showToast(toast5, "Prohra na čas", 900);
+    }
+  }, 250);
+}
+
+function myPersonIndex(g){
+  if(!g) return null;
+  if(g.p1?.accountId === accountId) return 0;
+  if(g.p2?.accountId === accountId) return 1;
+  return null;
+}
+
+function setHUDFromGame(g){
+  // turn indicator: X=dark, O=light; we map symbols to persons
+  const myIdx = myPersonIndex(g);
+  const turn = g.turnPerson ?? 0;
+
+  clockA.textContent = fmt((g.timeLeft?.[0] ?? 600000));
+  clockB.textContent = fmt((g.timeLeft?.[1] ?? 600000));
+  clockA.classList.toggle("active", turn===0);
+  clockB.classList.toggle("active", turn===1);
+
+  const whoIsX = g.xPerson ?? 0;
+  const turnChar = (turn===whoIsX) ? "X" : "O";
+  setTurnColor(turnChar==="X" ? "rgba(0,0,0,0.86)" : "rgba(255,255,255,0.92)");
+}
+
+function cleanGameSubs(){
+  if(unsubGame){ try{ unsubGame(); }catch(e){} unsubGame=null; }
+  stopTick();
+}
+
+async function openGameById(id){
+  cleanGameSubs();
+  gameId = id;
+  showScreen(scrGame);
+
+  unsubGame = onSnapshot(doc(db,"games",gameId),(snap)=>{
+    if(!snap.exists()) return;
+    game = snap.data();
+    if(!game.board) game.board = ".".repeat(N*N);
+    renderBoard(game.board);
+    setHUDFromGame(game);
+    startTick();
+  });
+}
+
+async function leaveGame(){
+  closeSheet();
+  cleanGameSubs();
+  gameId = null;
+  game = null;
+  mode = null;
+  showScreen(scrMenu);
+}
+
+/* ============================================================
+   Local training (offline)
+============================================================ */
+function startLocalTraining(){
+  mode = "local";
+  local = {
+    board: ".".repeat(N*N),
+    turnChar: "X",
+    over:false
+  };
+  showScreen(scrGame);
+  renderBoard(local.board);
+  clockA.textContent = "—";
+  clockB.textContent = "—";
+  clockA.classList.remove("active");
+  clockB.classList.remove("active");
+  setTurnColor("rgba(0,0,0,0.86)");
+  showToast(toast5,"Trénink",900);
+}
+
+/* ============================================================
+   Online training rooms:
+   trainingRooms/{code} {status, host, guest, gameId}
+============================================================ */
+async function onlineTrainingMenu(){
+  openSheet("Online trénink", `
+    <div class="panelRow">
+      <button class="btn primary" id="trCreate"><span>Založit hru</span><span>＋</span></button>
+    </div>
+    <div class="panelRow">
+      <button class="btn" id="trJoin"><span>Připojit se</span><span>→</span></button>
+    </div>
+    <div class="panelRow">
+      <button class="btn bad" id="trClose"><span>Zavřít</span><span>✕</span></button>
+    </div>
+  `);
+
+  $("#trClose").addEventListener("click", closeSheet);
+  $("#trCreate").addEventListener("click", createTrainingRoom);
+  $("#trJoin").addEventListener("click", joinTrainingRoomPrompt);
+}
+
+async function createTrainingRoom(){
+  const code = randomRoomCode5();
+  const roomRef = doc(db,"trainingRooms", code);
+
+  try{
+    await setDoc(roomRef,{
+      code,
+      status:"waiting",
+      host:{ accountId, nick: me.nick },
+      createdAt: serverTimestamp()
+    }, {merge:false});
+
+    openSheet("Kód hry", `
+      <div class="panelRow">
+        <span class="pill" style="flex:1;justify-content:center;font-size:18px;">${code}</span>
+        <button class="tinyBtn" id="copyRoom">⧉</button>
+      </div>
+      <div class="panelRow">
+        <button class="btn primary" id="waitRoom"><span>Čekám…</span><span>⏳</span></button>
+      </div>
+      <div class="panelRow">
+        <button class="btn bad" id="cancelRoom"><span>Zrušit</span><span>✕</span></button>
+      </div>
+      <div class="hint" style="padding:0 6px;">Pošli kód kamarádovi. On dá „Připojit se“ a zadá kód.</div>
+    `);
+
+    $("#copyRoom").addEventListener("click", async ()=>{
+      try{ await navigator.clipboard.writeText(code); showToast(toast5,"Zkopírováno",900); }catch(e){ showToast(toast5,"Nejde kopírovat",900); }
+    });
+
+    const unsub = onSnapshot(roomRef, async (snap)=>{
+      if(!snap.exists()) return;
+      const r = snap.data();
+      if(r.status === "started" && r.gameId){
+        unsub();
+        closeSheet();
+        await openGameById(r.gameId);
+      }
+    });
+
+    $("#cancelRoom").addEventListener("click", async ()=>{
+      unsub();
+      try{ await deleteDoc(roomRef); }catch(e){}
+      closeSheet();
+    });
+
+    $("#waitRoom").addEventListener("click", ()=> showToast(toast5,"Čekám…",900));
+
+  }catch(e){
+    console.error(e);
+    showToast(toast5,"Chyba",900);
+  }
+}
+
+async function joinTrainingRoomPrompt(){
+  openSheet("Připojit se", `
+    <div class="panelRow">
+      <input class="inp" id="roomIn" placeholder="Zadej 5místný kód" maxlength="5" />
+      <button class="tinyBtn" id="goJoin">→</button>
+    </div>
+    <div class="panelRow">
+      <button class="btn bad" id="closeJoin"><span>Zavřít</span><span>✕</span></button>
+    </div>
+  `);
+  $("#closeJoin").addEventListener("click", closeSheet);
+  $("#goJoin").addEventListener("click", async ()=>{
+    const code = ($("#roomIn").value||"").trim().toUpperCase();
+    if(code.length!==5){ showToast(toast5,"Kód má 5 znaků",900); return; }
+    await joinTrainingRoom(code);
+  });
+}
+
+async function joinTrainingRoom(code){
+  const roomRef = doc(db,"trainingRooms", code);
+  try{
+    const startedGameId = await runTransaction(db, async (tx)=>{
+      const snap = await tx.get(roomRef);
+      if(!snap.exists()) throw new Error("NO");
+      const r = snap.data();
+      if(r.status !== "waiting") throw new Error("TAKEN");
+      if(r.host?.accountId === accountId) throw new Error("SELF");
+
+      // create game
+      const gRef = doc(collection(db,"games"));
+      tx.set(gRef,{
+        mode:"trainOnline",
+        status:"active",
+        createdAt: serverTimestamp(),
+        n:N, win:WIN,
+        board:".".repeat(N*N),
+
+        // host = p1, guest = p2
+        p1: { accountId: r.host.accountId, nick: r.host.nick },
+        p2: { accountId: accountId, nick: me.nick },
+
+        // assign X/O: host = X, guest = O
+        xPerson: 0,
+        turnPerson: 0,
+
+        timeLeft: [10*60*1000, 10*60*1000],
+        lastAt: serverTimestamp()
+      });
+
+      tx.update(roomRef,{
+        status:"started",
+        guest:{ accountId, nick: me.nick },
+        gameId: gRef.id,
+        startedAt: serverTimestamp()
+      });
+
+      return gRef.id;
+    });
+
+    closeSheet();
+    await openGameById(startedGameId);
+  }catch(e){
+    const m = String(e.message||"");
+    if(m.includes("NO")) showToast(toast5,"Kód neexistuje",900);
+    else if(m.includes("TAKEN")) showToast(toast5,"Už běží",900);
+    else if(m.includes("SELF")) showToast(toast5,"To jsi ty",900);
+    else{ console.error(e); showToast(toast5,"Chyba",900); }
+  }
+}
+
+/* ============================================================
+   Ranked matchmaking:
+   rankedQueue/{accountId} {rating, createdAt}
+   games/{id} with mode:"ranked", rated:true
+   pairDaily/{pairKey} {count}
+============================================================ */
+let unsubQueueWatch = null;
+
+async function startRankedQueue(){
+  closeSheet();
+  mode = "ranked";
+
+  const qRef = doc(db,"rankedQueue", accountId);
+  await setDoc(qRef,{
+    accountId,
+    nick: me.nick,
+    rating: me.rating ?? 1000,
+    createdAt: serverTimestamp()
+  }, {merge:true});
+
+  openSheet("Bodovaná hra", `
+    <div class="panelRow">
+      <button class="btn primary" id="rankWait"><span>Čekám na soupeře…</span><span>⏳</span></button>
+    </div>
+    <div class="panelRow">
+      <button class="btn bad" id="rankCancel"><span>Zrušit</span><span>✕</span></button>
+    </div>
+    <div class="hint" style="padding:0 6px;">Limit: max 2 hodnocené hry za den proti stejnému soupeři.</div>
+  `);
+
+  $("#rankWait").addEventListener("click", ()=> showToast(toast5,"Čekám…",900));
+  $("#rankCancel").addEventListener("click", async ()=>{
+    try{ await deleteDoc(qRef); }catch(e){}
+    if(unsubQueueWatch){ try{ unsubQueueWatch(); }catch(e){} unsubQueueWatch=null; }
+    closeSheet();
+  });
+
+  // attempt match now (client-side)
+  await tryMatchRanked();
+}
+
+async function tryMatchRanked(){
+  // pick opponent from queue (oldest) that doesn't violate pair limit
+  const q = query(collection(db,"rankedQueue"), orderBy("createdAt","asc"), limit(15));
+  const snap = await getDocs(q);
+
+  const candidates = [];
+  snap.forEach(d=>{
+    if(d.id === accountId) return;
+    candidates.push({ id:d.id, ...d.data() });
+  });
+
+  let chosen = null;
+  for(const c of candidates){
+    const pk = pairKey(accountId, c.id);
+    const ps = await getDoc(doc(db,"pairDaily", pk));
+    const count = ps.exists() ? (ps.data().count||0) : 0;
+    if(count < 2){
+      chosen = c;
+      break;
+    }
+  }
+
+  if(!chosen){
+    // no compatible opponent now; just wait (simple polling)
+    if(!unsubQueueWatch){
+      unsubQueueWatch = onSnapshot(collection(db,"rankedQueue"), async ()=>{
+        // try occasionally when queue changes
+        await tryMatchRanked();
+      });
+    }
+    return;
+  }
+
+  // Create game in a transaction (verify both still queued + increment pairDaily count)
+  try{
+    const gid = await runTransaction(db, async (tx)=>{
+      const meQ = doc(db,"rankedQueue", accountId);
+      const opQ = doc(db,"rankedQueue", chosen.id);
+
+      const meSnap = await tx.get(meQ);
+      const opSnap = await tx.get(opQ);
+      if(!meSnap.exists() || !opSnap.exists()) throw new Error("QUEUE_CHANGED");
+
+      const pk = pairKey(accountId, chosen.id);
+      const pairRef = doc(db,"pairDaily", pk);
+      const pairSnap = await tx.get(pairRef);
+      const count = pairSnap.exists() ? (pairSnap.data().count||0) : 0;
+      if(count >= 2) throw new Error("PAIR_LIMIT");
+
+      // create game
+      const gRef = doc(collection(db,"games"));
+      tx.set(gRef,{
+        mode:"ranked",
+        rated:true,
+        status:"active",
+        createdAt: serverTimestamp(),
+        n:N, win:WIN,
+        board:".".repeat(N*N),
+
+        // p1 older queue entry = chosen, p2 = me
+        p1: { accountId: chosen.id, nick: chosen.nick },
+        p2: { accountId: accountId, nick: me.nick },
+
+        // simple assignment: p1 = X, p2 = O
+        xPerson: 0,
+        turnPerson: 0,
+
+        timeLeft: [10*60*1000, 10*60*1000],
+        lastAt: serverTimestamp()
+      });
+
+      // increment pair count
+      tx.set(pairRef, { count: count+1, updatedAt: serverTimestamp() }, {merge:true});
+
+      // remove both from queue
+      tx.delete(meQ);
+      tx.delete(opQ);
+
+      return gRef.id;
+    });
+
+    if(unsubQueueWatch){ try{ unsubQueueWatch(); }catch(e){} unsubQueueWatch=null; }
+    closeSheet();
+    await openGameById(gid);
+
+  }catch(e){
+    const m = String(e.message||"");
+    if(m.includes("PAIR_LIMIT")){
+      // someone else matched; try again
+      await tryMatchRanked();
+    }else if(m.includes("QUEUE_CHANGED")){
+      await tryMatchRanked();
+    }else{
+      console.error(e);
+      showToast(toast5,"Chyba párování",900);
+    }
+  }
+}
+
+/* ============================================================
+   Moves (local + online)
+============================================================ */
+function setCharAt(s, idx, ch){
+  return s.substring(0,idx) + ch + s.substring(idx+1);
+}
+
+async function placeAt(x,y){
+  if(x<0||x>=N||y<0||y>=N) return;
+  const idx = y*N+x;
+
+  if(mode==="local"){
+    if(local.over) return;
+    if(local.board[idx] !== ".") return;
+
+    const ch = local.turnChar;
+    local.board = setCharAt(local.board, idx, ch);
+    renderBoard(local.board);
+    vib(10);
+
+    if(checkWinFrom(local.board, x, y, ch)){
+      local.over = true;
+      showToast(toast5, `${ch} vyhrál`, 1200);
+      return;
+    }
+    local.turnChar = (local.turnChar==="X") ? "O" : "X";
+    setTurnColor(local.turnChar==="X" ? "rgba(0,0,0,0.86)" : "rgba(255,255,255,0.92)");
+    return;
+  }
+
+  if(!gameId || !game) return;
+  if(game.status !== "active") return;
+
+  const myIdx = myPersonIndex(game);
+  if(myIdx===null) return;
+  if((game.turnPerson ?? 0) !== myIdx){
+    showToast(toast5, "Teď ne", 700);
+    return;
+  }
+
+  const boardStr = game.board || ".".repeat(N*N);
+  if(boardStr[idx] !== ".") return;
+
+  const xPerson = game.xPerson ?? 0;
+  const ch = (myIdx === xPerson) ? "X" : "O";
+
+  try{
+    await runTransaction(db, async (tx)=>{
+      const gRef = doc(db,"games",gameId);
+      const snap = await tx.get(gRef);
+      if(!snap.exists()) return;
+      const g = snap.data();
+      if(g.status !== "active") return;
+
+      const myIdx2 = (g.p1.accountId===accountId)?0 : (g.p2.accountId===accountId)?1 : null;
+      if(myIdx2===null) return;
+      if((g.turnPerson??0) !== myIdx2) return;
+
+      const b = g.board || ".".repeat(N*N);
+      if(b[idx] !== ".") return;
+
+      const xP = g.xPerson ?? 0;
+      const ch2 = (myIdx2 === xP) ? "X" : "O";
+      const nextB = setCharAt(b, idx, ch2);
+
+      // decrement time roughly (serverTimestamp not good for dt here; keep simple)
+      const tl = (g.timeLeft || [600000,600000]).slice();
+      // (čistě orientačně) – bez serveru tohle není dokonale férové
+      // reálný dt řešíme jen vizuálně; tady necháme beze změny
+
+      const winner = checkWinFrom(nextB, x, y, ch2) ? myIdx2 : null;
+      const patch = {
+        board: nextB,
+        timeLeft: tl,
+        lastAt: serverTimestamp()
+      };
+
+      if(winner!==null){
+        patch.status = "ended";
+        patch.winnerPerson = winner;
+        patch.endedAt = serverTimestamp();
+        patch.endReason = "win";
+      }else{
+        patch.turnPerson = 1 - (g.turnPerson ?? 0);
+      }
+
+      tx.update(gRef, patch);
+
+      tx.set(doc(collection(gRef,"moves")), { x,y,ch:ch2, by: accountId, at: serverTimestamp() });
+    });
+
+    vib(10);
+
+    // If ended and ranked => update ratings (client-side, casual)
+    // We'll react in snapshot below (simpler).
+
+  }catch(e){
+    console.error(e);
+    showToast(toast5,"Chyba tahu",900);
+  }
+}
+
+board.addEventListener("pointerdown",(e)=>{
+  if(sheet.classList.contains("open")) return;
+  const pos = canvasPos(e);
+  const {size,ox,oy} = getSquareArea();
+  if(pos.x<ox||pos.x>ox+size||pos.y<oy||pos.y>oy+size) return;
+  const cell=size/N;
+  const x=Math.floor((pos.x-ox)/cell);
+  const y=Math.floor((pos.y-oy)/cell);
+  placeAt(x,y);
+});
+
+/* ============================================================
+   End game handling + rating (simple ELO) + delta24
+============================================================ */
+function eloDelta(rA, rB, scoreA, K=24){
+  // scoreA = 1 win, 0.5 draw, 0 loss
+  const EA = 1/(1 + Math.pow(10, (rB-rA)/400));
+  const d = Math.round(K*(scoreA - EA));
+  return d;
+}
+
+async function finalizeIfNeeded(g){
+  if(!g || g.status!=="ended") return;
+  if(g._finalizedClient) return;
+  g._finalizedClient = true;
+
+  // local toast
+  const myIdx = myPersonIndex(g);
+  const w = g.winnerPerson;
+  if(w===0 || w===1){
+    showToast(toast5, (myIdx===w) ? "Výhra" : "Prohra", 1200);
+  }else{
+    showToast(toast5, "Konec", 900);
+  }
+
+  // Only ranked games affect rating
+  if(!(g.mode==="ranked" && g.rated===true)) return;
+
+  // avoid double-finalize: only p1 client performs rating update (simple)
+  if(myIdx !== 0) return;
+
+  try{
+    await runTransaction(db, async (tx)=>{
+      const gRef = doc(db,"games",gameId);
+      const gs = await tx.get(gRef);
+      if(!gs.exists()) return;
+      const gg = gs.data();
+      if(gg._ratingDone) return;
+      if(gg.mode!=="ranked" || gg.rated!==true || gg.status!=="ended") return;
+
+      const p1 = gg.p1.accountId;
+      const p2 = gg.p2.accountId;
+
+      const u1Ref = doc(db,"users",p1);
+      const u2Ref = doc(db,"users",p2);
+
+      const u1s = await tx.get(u1Ref);
+      const u2s = await tx.get(u2Ref);
+      if(!u1s.exists() || !u2s.exists()) return;
+
+      const u1 = u1s.data();
+      const u2 = u2s.data();
+
+      const r1 = u1.rating ?? 1000;
+      const r2 = u2.rating ?? 1000;
+
+      let s1 = 0.5, s2 = 0.5;
+      if(gg.winnerPerson===0){ s1=1; s2=0; }
+      if(gg.winnerPerson===1){ s1=0; s2=1; }
+
+      const d1 = eloDelta(r1,r2,s1);
+      const d2 = -d1;
+
+      tx.update(u1Ref,{
+        rating: r1 + d1,
+        delta24: (u1.delta24 ?? 0) + d1,
+        ratedToday: (u1.ratedToday ?? 0) + 1,
+        lastSeenAt: serverTimestamp()
+      });
+      tx.update(u2Ref,{
+        rating: r2 + d2,
+        delta24: (u2.delta24 ?? 0) + d2,
+        ratedToday: (u2.ratedToday ?? 0) + 1,
+        lastSeenAt: serverTimestamp()
+      });
+
+      tx.update(gRef,{ _ratingDone:true });
+
+      // log match
+      tx.set(doc(collection(db,"matches")), {
+        at: serverTimestamp(),
+        gameId,
+        p1, p2,
+        winnerPerson: gg.winnerPerson ?? null,
+        d1, d2
+      });
+    });
+  }catch(e){
+    console.error(e);
+  }
+}
+
+/* Hook finalize from snapshot: */
+function attachFinalizeWatcher(){
+  if(!unsubGame) return;
+}
+
+/* ============================================================
+   Resign / Back
+============================================================ */
+btnResign.addEventListener("click", async ()=>{
+  if(mode==="local"){
+    showToast(toast5,"Konec",900);
+    local.over=true;
+    return;
+  }
+  if(!gameId || !game) return;
+  const myIdx = myPersonIndex(game);
+  if(myIdx===null) return;
+
+  try{
+    await updateDoc(doc(db,"games",gameId),{
+      status:"ended",
+      winnerPerson: 1-myIdx,
+      endedAt: serverTimestamp(),
+      endReason:"resign"
+    });
+  }catch(e){
+    console.error(e);
+  }
+});
+btnBack.addEventListener("click", leaveGame);
+
+/* ============================================================
+   Menu actions
+============================================================ */
+btnLocal.addEventListener("click", ()=>{
+  closeSheet();
+  startLocalTraining();
+});
+btnOnlineTrain.addEventListener("click", onlineTrainingMenu);
+btnRanked.addEventListener("click", startRankedQueue);
+btnLadder.addEventListener("click", async ()=>{
+  showScreen(scrLadder);
+  await refreshLadder();
+});
+btnLogout.addEventListener("click", logoutAll);
+
+btnLadBack.addEventListener("click", ()=> showScreen(scrMenu));
+btnLadRefresh.addEventListener("click", refreshLadder);
+
+async function refreshLadder(){
+  ladderPre.textContent = "Načítám…";
+  try{
+    const q = query(collection(db,"users"), orderBy("rating","desc"), limit(100));
+    const snap = await getDocs(q);
+
+    let i=0;
+    const lines = [];
+    snap.forEach(d=>{
+      i++;
+      const u = d.data();
+      const r = u.rating ?? 1000;
+      const d24 = u.delta24 ?? 0;
+      const tag = d24>0 ? `+${d24}` : `${d24}`;
+      lines.push(`${String(i).padStart(2,"0")}. @${u.nick}   ${String(r).padStart(4," ")}   ${tag}`);
+    });
+    ladderPre.textContent = lines.length ? lines.join("\n") : "—";
+  }catch(e){
+    console.error(e);
+    ladderPre.textContent = "Chyba";
+  }
+}
+
+/* ============================================================
+   Wire up code screen
+============================================================ */
+btnCopyCode.addEventListener("click", async ()=>{
+  const code = localStorage.getItem("pisk_userCode") || myCodePill.textContent;
+  try{
+    await navigator.clipboard.writeText(code);
+    showToast(toast2,"Zkopírováno",900);
+  }catch(e){
+    showToast(toast2,"Nejde kopírovat",900);
+  }
+});
+btnGoMenu.addEventListener("click", async ()=>{
+  await loadMe();
+  watchMe();
+  setMeUI();
+  showScreen(scrMenu);
+});
+
+/* ============================================================
+   Nick screen actions
+============================================================ */
+btnNickOk.addEventListener("click", ()=> createAccountWithNick(inNick.value));
+btnAltLogin.addEventListener("click", loginWithNickAndCode);
+
+/* ============================================================
+   Auto-restore: if accountId stored -> go menu
+============================================================ */
+async function boot(){
+  await ensureAnon();
+
+  const savedAcc = localStorage.getItem("pisk_accountId");
+  if(savedAcc){
+    accountId = savedAcc;
+    await loadMe();
+    if(me){
+      watchMe();
+      setMeUI();
+      showScreen(scrMenu);
+      return;
+    }else{
+      // stale
+      localStorage.removeItem("pisk_accountId");
+    }
+  }
+  showScreen(scrNick);
+}
+boot();
+
+/* ============================================================
+   Watch game ended -> finalize rating + toast
+============================================================ */
+function installGameEndWatcher(){
+  // finalize called in snapshot (we already have in openGameById snapshot)
+}
+const origOpenGameById = openGameById;
+openGameById = async (id)=>{
+  await origOpenGameById(id);
+  // patch snapshot finalize: our snapshot is in origOpenGameById - we need to rewrap,
+  // simplest: add a second listener on the same doc.
+  const gRef = doc(db,"games",id);
+  const unsub2 = onSnapshot(gRef,(snap)=>{
+    if(!snap.exists()) return;
+    const gg = snap.data();
+    if(gg.status==="ended"){
+      finalizeIfNeeded(gg);
+      // auto-close after a moment
+      setTimeout(()=>{ /* keep screen; user decides back */ }, 250);
+    }
+  });
+  // store to clean up
+  const prev = unsubGame;
+  unsubGame = ()=>{
+    try{ prev && prev(); }catch(e){}
+    try{ unsub2 && unsub2(); }catch(e){}
+  };
+};
+
+/* ============================================================
+   Responsive redraw
+============================================================ */
+window.addEventListener("resize", ()=>{
+  if(mode==="local" && local) renderBoard(local.board);
+  if(game && game.board) renderBoard(game.board);
+});
+</script>
+</body>
+</html>
