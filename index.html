@@ -329,27 +329,22 @@
         <div id="clockA" class="clockPill" title="Hráč A">10:00</div>
         <button id="btnTurn" class="turnBtn" title="Na tahu"></button>
         <div id="clockB" class="clockPill" title="Hráč B">10:00</div>
+        <button id="btnSwap" class="iconBtn" title="SWAP">⇄</button>
         <button id="btnResign" class="iconBtn" title="Vzdát">🏳️</button>
       </div>
     </div>
     <canvas id="board"></canvas>
- 
-  </div>
-  <!-- SCREEN: GAME -->
-  <div id="scrGame" class="screen">
-    ...
-    <canvas id="board"></canvas>
-  </div>
 
-  <!-- GLOBAL SHEET + TOAST (musí být mimo screeny) -->
-  <div id="sheet" aria-hidden="true">
-    <div class="panel">
-      <div class="panelTitle" id="sheetTitle">—</div>
-      <div id="sheetBody"></div>
+    <!-- Sheet for online training create/join / ranked waiting -->
+    <div id="sheet" aria-hidden="true">
+      <div class="panel">
+        <div class="panelTitle" id="sheetTitle">—</div>
+        <div id="sheetBody"></div>
+      </div>
     </div>
-  </div>
 
-  <div id="toast5" class="toast"></div>
+    <div id="toast5" class="toast"></div>
+  </div>
 
 </div>
 
@@ -427,6 +422,7 @@ const btnLadBack = $("#btnLadBack");
 
 const btnBack = $("#btnBack");
 const btnResign = $("#btnResign");
+const btnSwap = $("#btnSwap");
 const btnTurn = $("#btnTurn");
 const clockA = $("#clockA");
 const clockB = $("#clockB");
@@ -498,6 +494,15 @@ function closeSheet(){
   sheetBody.innerHTML = "";
 }
 sheet.addEventListener("pointerdown",(e)=>{ if(e.target===sheet) closeSheet(); });
+
+function invertBoardXO(s){
+  let out = "";
+  for(let i=0;i<s.length;i++){
+    const c = s[i];
+    out += (c==="X") ? "O" : (c==="O") ? "X" : c;
+  }
+  return out;
+}
 
 /* ============================================================
    Auth + account
@@ -780,31 +785,55 @@ let unsubGame = null;
 let tickTimer = null;
 
 function stopTick(){ if(tickTimer){ clearInterval(tickTimer); tickTimer=null; } }
+
+function getDisplayedTimeLeft(g){
+  const tl = (g.timeLeft || [600000,600000]).slice();
+  const turn = g.turnPerson ?? 0;
+
+  if(g.status === "active" && g.turnStartedAt){
+    const startedMs = g.turnStartedAt.toMillis ? g.turnStartedAt.toMillis() : Date.now();
+    const elapsed = Math.max(0, Date.now() - startedMs);
+    tl[turn] = Math.max(0, tl[turn] - elapsed);
+  }
+  return tl;
+}
+
 function startTick(){
   stopTick();
   tickTimer = setInterval(()=> {
-    if(!game || game.status!=="active") return;
-    // purely visual countdown from last snapshot (client-side)
-    // Real fairness would be server-side; this is good enough for casual.
-    const now = Date.now();
-    const last = (game._lastClientNow ?? now);
-    const dt = Math.max(0, now - last);
-    game._lastClientNow = now;
+    if(!game) return;
 
-    // only decrement on active player's turn
-    const p = game.turnPerson ?? 0;
-    game.timeLeft = game.timeLeft || [600000,600000];
-    game.timeLeft[p] = Math.max(0, game.timeLeft[p] - dt);
+    const turn = game.turnPerson ?? 0;
+    const tl = getDisplayedTimeLeft(game);
 
-    clockA.textContent = fmt(game.timeLeft[0]);
-    clockB.textContent = fmt(game.timeLeft[1]);
-    clockA.classList.toggle("active", p===0);
-    clockB.classList.toggle("active", p===1);
+    clockA.textContent = fmt(tl[0]);
+    clockB.textContent = fmt(tl[1]);
+    clockA.classList.toggle("active", turn===0 && game.status==="active");
+    clockB.classList.toggle("active", turn===1 && game.status==="active");
 
-    if(game.timeLeft[p] <= 0){
+    if(game.status==="active" && tl[turn] <= 0){
       showToast(toast5, "Prohra na čas", 900);
     }
-  }, 250);
+  }, 200);
+}
+
+let localTick = null;
+function stopLocalTick(){ if(localTick){ clearInterval(localTick); localTick=null; } }
+function startLocalTick(){
+  stopLocalTick();
+  localTick = setInterval(()=>{
+    if(mode!=="local" || !local || local.over) return;
+
+    const tl = local.timeLeft.slice();
+    const p = local.turnPerson;
+    const elapsed = Math.max(0, Date.now() - local.turnStartMs);
+    tl[p] = Math.max(0, tl[p] - elapsed);
+
+    clockA.textContent = fmt(tl[0]);
+    clockB.textContent = fmt(tl[1]);
+    clockA.classList.toggle("active", p===0);
+    clockB.classList.toggle("active", p===1);
+  }, 200);
 }
 
 function myPersonIndex(g){
@@ -814,19 +843,40 @@ function myPersonIndex(g){
   return null;
 }
 
-function setHUDFromGame(g){
-  // turn indicator: X=dark, O=light; we map symbols to persons
-  const myIdx = myPersonIndex(g);
-  const turn = g.turnPerson ?? 0;
+function updateSwapButtonVisibility(){
+  btnSwap.style.display = "none";
 
-  clockA.textContent = fmt((g.timeLeft?.[0] ?? 600000));
-  clockB.textContent = fmt((g.timeLeft?.[1] ?? 600000));
-  clockA.classList.toggle("active", turn===0);
-  clockB.classList.toggle("active", turn===1);
+  if(mode === "local"){
+    if(local?.swapAvailable && local?.turnPerson === 1 && !local?.over){
+      btnSwap.style.display = "";
+    }
+    return;
+  }
+
+  if(!game || game.status !== "active") return;
+
+  const myIdx = myPersonIndex(game);
+  if(myIdx === null) return;
+
+  if(game.swapAvailable === true && (game.moveCount ?? 0) === 1 && (game.turnPerson ?? 0) === myIdx){
+    btnSwap.style.display = "";
+  }
+}
+
+function setHUDFromGame(g){
+  const turn = g.turnPerson ?? 0;
+  const tl = getDisplayedTimeLeft(g);
+
+  clockA.textContent = fmt((tl?.[0] ?? 600000));
+  clockB.textContent = fmt((tl?.[1] ?? 600000));
+  clockA.classList.toggle("active", turn===0 && g.status==="active");
+  clockB.classList.toggle("active", turn===1 && g.status==="active");
 
   const whoIsX = g.xPerson ?? 0;
   const turnChar = (turn===whoIsX) ? "X" : "O";
   setTurnColor(turnChar==="X" ? "rgba(0,0,0,0.86)" : "rgba(255,255,255,0.92)");
+
+  updateSwapButtonVisibility();
 }
 
 function cleanGameSubs(){
@@ -852,9 +902,11 @@ async function openGameById(id){
 async function leaveGame(){
   closeSheet();
   cleanGameSubs();
+  stopLocalTick();
   gameId = null;
   game = null;
   mode = null;
+  local = null;
   showScreen(scrMenu);
 }
 
@@ -865,17 +917,30 @@ function startLocalTraining(){
   mode = "local";
   local = {
     board: ".".repeat(N*N),
-    turnChar: "X",
-    over:false
+    over:false,
+
+    turnPerson: 0,
+    xPerson: 0,
+    moveCount: 0,
+    swapAvailable: false,
+
+    timeLeft: [10*60*1000, 10*60*1000],
+    turnStartMs: Date.now()
   };
+
   showScreen(scrGame);
   renderBoard(local.board);
-  clockA.textContent = "—";
-  clockB.textContent = "—";
-  clockA.classList.remove("active");
+
+  clockA.textContent = fmt(local.timeLeft[0]);
+  clockB.textContent = fmt(local.timeLeft[1]);
+  clockA.classList.add("active");
   clockB.classList.remove("active");
+
   setTurnColor("rgba(0,0,0,0.86)");
+  updateSwapButtonVisibility();
   showToast(toast5,"Trénink",900);
+
+  startLocalTick();
 }
 
 /* ============================================================
@@ -1000,6 +1065,10 @@ async function joinTrainingRoom(code){
         turnPerson: 0,
 
         timeLeft: [10*60*1000, 10*60*1000],
+        turnStartedAt: serverTimestamp(),
+        moveCount: 0,
+        swapAvailable: false,
+
         lastAt: serverTimestamp()
       });
 
@@ -1133,6 +1202,10 @@ async function tryMatchRanked(){
         turnPerson: 0,
 
         timeLeft: [10*60*1000, 10*60*1000],
+        turnStartedAt: serverTimestamp(),
+        moveCount: 0,
+        swapAvailable: false,
+
         lastAt: serverTimestamp()
       });
 
@@ -1179,18 +1252,39 @@ async function placeAt(x,y){
     if(local.over) return;
     if(local.board[idx] !== ".") return;
 
-    const ch = local.turnChar;
+    // odečti čas aktivnímu hráči
+    const p = local.turnPerson;
+    const elapsed = Math.max(0, Date.now() - local.turnStartMs);
+    local.timeLeft[p] = Math.max(0, local.timeLeft[p] - elapsed);
+
+    const ch = (p === local.xPerson) ? "X" : "O";
+
     local.board = setCharAt(local.board, idx, ch);
-    renderBoard(local.board);
+    local.moveCount++;
     vib(10);
+
+    if(local.moveCount === 1){
+      local.swapAvailable = true;
+    }else{
+      local.swapAvailable = false;
+    }
+
+    renderBoard(local.board);
 
     if(checkWinFrom(local.board, x, y, ch)){
       local.over = true;
       showToast(toast5, `${ch} vyhrál`, 1200);
+      updateSwapButtonVisibility();
       return;
     }
-    local.turnChar = (local.turnChar==="X") ? "O" : "X";
-    setTurnColor(local.turnChar==="X" ? "rgba(0,0,0,0.86)" : "rgba(255,255,255,0.92)");
+
+    local.turnPerson = 1 - local.turnPerson;
+    local.turnStartMs = Date.now();
+
+    const nextCh = (local.turnPerson === local.xPerson) ? "X" : "O";
+    setTurnColor(nextCh==="X" ? "rgba(0,0,0,0.86)" : "rgba(255,255,255,0.92)");
+
+    updateSwapButtonVisibility();
     return;
   }
 
@@ -1225,29 +1319,42 @@ async function placeAt(x,y){
       const b = g.board || ".".repeat(N*N);
       if(b[idx] !== ".") return;
 
+      const tl = (g.timeLeft || [600000,600000]).slice();
+
+      let elapsed = 0;
+      if(g.turnStartedAt && g.turnStartedAt.toMillis){
+        elapsed = Math.max(0, Date.now() - g.turnStartedAt.toMillis());
+      }
+      const cur = (g.turnPerson ?? 0);
+      tl[cur] = Math.max(0, tl[cur] - elapsed);
+
       const xP = g.xPerson ?? 0;
       const ch2 = (myIdx2 === xP) ? "X" : "O";
       const nextB = setCharAt(b, idx, ch2);
-
-      // decrement time roughly (serverTimestamp not good for dt here; keep simple)
-      const tl = (g.timeLeft || [600000,600000]).slice();
-      // (čistě orientačně) – bez serveru tohle není dokonale férové
-      // reálný dt řešíme jen vizuálně; tady necháme beze změny
 
       const winner = checkWinFrom(nextB, x, y, ch2) ? myIdx2 : null;
       const patch = {
         board: nextB,
         timeLeft: tl,
-        lastAt: serverTimestamp()
+        lastAt: serverTimestamp(),
+        moveCount: (g.moveCount ?? 0) + 1
       };
+
+      if(patch.moveCount === 1){
+        patch.swapAvailable = true;
+      }else{
+        patch.swapAvailable = false;
+      }
 
       if(winner!==null){
         patch.status = "ended";
         patch.winnerPerson = winner;
         patch.endedAt = serverTimestamp();
         patch.endReason = "win";
+        patch.turnStartedAt = serverTimestamp();
       }else{
         patch.turnPerson = 1 - (g.turnPerson ?? 0);
+        patch.turnStartedAt = serverTimestamp();
       }
 
       tx.update(gRef, patch);
@@ -1256,9 +1363,6 @@ async function placeAt(x,y){
     });
 
     vib(10);
-
-    // If ended and ranked => update ratings (client-side, casual)
-    // We'll react in snapshot below (simpler).
 
   }catch(e){
     console.error(e);
@@ -1275,6 +1379,74 @@ board.addEventListener("pointerdown",(e)=>{
   const x=Math.floor((pos.x-ox)/cell);
   const y=Math.floor((pos.y-oy)/cell);
   placeAt(x,y);
+});
+
+/* ============================================================
+   SWAP button behavior (local + online)
+============================================================ */
+btnSwap.addEventListener("click", async ()=>{
+  // lokál
+  if(mode === "local"){
+    if(!local?.swapAvailable || local.turnPerson !== 1 || local.over) return;
+
+    local.board = invertBoardXO(local.board);
+    local.swapAvailable = false;
+    local.xPerson = 1 - local.xPerson;
+
+    // tah zůstává hráči 1 (ten SWAPnul)
+    local.turnPerson = 1;
+    local.turnStartMs = Date.now();
+
+    renderBoard(local.board);
+
+    const turnCh = (local.turnPerson === local.xPerson) ? "X" : "O";
+    setTurnColor(turnCh==="X" ? "rgba(0,0,0,0.86)" : "rgba(255,255,255,0.92)");
+    updateSwapButtonVisibility();
+
+    showToast(toast5, "SWAP!", 900);
+    return;
+  }
+
+  // online / ranked
+  if(!gameId || !game) return;
+  if(game.status !== "active") return;
+
+  const myIdx = myPersonIndex(game);
+  if(myIdx === null) return;
+
+  if(!(game.swapAvailable === true && (game.moveCount ?? 0) === 1 && (game.turnPerson ?? 0) === myIdx)){
+    return;
+  }
+
+  try{
+    await runTransaction(db, async (tx)=>{
+      const gRef = doc(db,"games",gameId);
+      const snap = await tx.get(gRef);
+      if(!snap.exists()) return;
+      const g = snap.data();
+      if(g.status !== "active") return;
+
+      const my = (g.p1.accountId===accountId)?0 : (g.p2.accountId===accountId)?1 : null;
+      if(my === null) return;
+
+      if(!(g.swapAvailable === true && (g.moveCount ?? 0) === 1 && (g.turnPerson ?? 0) === my)) return;
+
+      const b = g.board || ".".repeat(N*N);
+
+      tx.update(gRef,{
+        board: invertBoardXO(b),
+        xPerson: 1 - (g.xPerson ?? 0),
+        swapAvailable: false,
+        turnStartedAt: serverTimestamp(),
+        lastAt: serverTimestamp()
+      });
+    });
+
+    showToast(toast5, "SWAP!", 900);
+  }catch(e){
+    console.error(e);
+    showToast(toast5, "SWAP chyba", 900);
+  }
 });
 
 /* ============================================================
@@ -1380,6 +1552,7 @@ btnResign.addEventListener("click", async ()=>{
   if(mode==="local"){
     showToast(toast5,"Konec",900);
     local.over=true;
+    updateSwapButtonVisibility();
     return;
   }
   if(!gameId || !game) return;
