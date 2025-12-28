@@ -333,10 +333,10 @@
         <button id="btnResign" class="iconBtn" title="Vzdát">🏳️</button>
       </div>
     </div>
+
     <canvas id="board"></canvas>
 
-</div>
- <!-- Sheet for online training create/join / ranked waiting -->
+    <!-- Sheet for online training create/join / ranked waiting -->
     <div id="sheet" aria-hidden="true">
       <div class="panel">
         <div class="panelTitle" id="sheetTitle">—</div>
@@ -347,17 +347,19 @@
     <div id="toast5" class="toast"></div>
   </div>
 
+</div>
+
 <script type="module">
 /* ============================================================
    Firebase
 ============================================================ */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
 import {
-  getAuth, signInAnonymously, onAuthStateChanged, signOut
+  getAuth, signInAnonymously, signOut
 } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction,
-  collection, query, where, orderBy, limit, getDocs, addDoc,
+  collection, query, orderBy, limit, getDocs,
   serverTimestamp, onSnapshot, deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
 
@@ -448,7 +450,6 @@ function normalizeNick(n){
   return (n||"").trim().replace(/\s+/g,"").slice(0,20);
 }
 function randomUserCode5(){
-  // 5 znaků: bez 0/O/I/1 (aby se nepletlo)
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let out="";
   for(let i=0;i<5;i++) out += alphabet[Math.floor(Math.random()*alphabet.length)];
@@ -504,10 +505,20 @@ function invertBoardXO(s){
 }
 
 /* ============================================================
+   Touch preview (long press -> šedý náhled)
+============================================================ */
+let touchPreview = {
+  active: false,
+  x: -1,
+  y: -1,
+  timer: null
+};
+
+/* ============================================================
    Auth + account
 ============================================================ */
-let authUid = null;     // firebase auth uid
-let accountId = null;   // our account doc id (stable)
+let authUid = null;
+let accountId = null;
 let me = null;
 let unsubMe = null;
 
@@ -557,9 +568,6 @@ async function logoutAll(){
 
 /* ============================================================
    First-run nickname -> create account
-   Collections:
-     nicks/{nickLower} -> {accountId}
-     users/{accountId} -> profile
 ============================================================ */
 async function createAccountWithNick(nick){
   nick = normalizeNick(nick);
@@ -572,8 +580,6 @@ async function createAccountWithNick(nick){
   const userCode = randomUserCode5();
   const codeHash = hashLite(userCode);
 
-  // Create accountId independent of authUid (so it can be used on other device too)
-  // We'll use Firestore auto-id for account
   const accRef = doc(collection(db,"users"));
   const newAccountId = accRef.id;
 
@@ -589,8 +595,8 @@ async function createAccountWithNick(nick){
         nick, nickLower,
         codeHash,
         rating: 1000,
-        delta24: 0,     // + / - za posledních 24h (zjednodušeně udržujeme klientem)
-        ratedToday: 0,  // kolik rated her dnes odehráno (zjednodušeně)
+        delta24: 0,
+        ratedToday: 0,
         createdAt: serverTimestamp(),
         lastSeenAt: serverTimestamp()
       }, {merge:false});
@@ -601,7 +607,6 @@ async function createAccountWithNick(nick){
     localStorage.setItem("pisk_nick", nick);
     localStorage.setItem("pisk_userCode", userCode);
 
-    // show code screen
     myCodePill.textContent = userCode;
     codeExplain.textContent =
 `Ulož si kód: ${userCode}
@@ -622,7 +627,7 @@ Když budeš chtít hrát na jiném zařízení:
   }
 }
 
-/* Alternate login with nick + code (minimal, hidden behind 🔑) */
+/* Alternate login with nick + code */
 async function loginWithNickAndCode(){
   const nick = normalizeNick(prompt("Přezdívka:") || "");
   if(!nick){ return; }
@@ -704,6 +709,15 @@ function canvasPos(e){
   const r = board.getBoundingClientRect();
   return {x: e.clientX - r.left, y: e.clientY - r.top};
 }
+function getCellFromPoint(px, py){
+  const {size, ox, oy} = getSquareArea();
+  if(px < ox || px > ox + size || py < oy || py > oy + size) return null;
+  const cell = size / N;
+  const x = Math.floor((px - ox) / cell);
+  const y = Math.floor((py - oy) / cell);
+  if(x < 0 || y < 0 || x >= N || y >= N) return null;
+  return {x, y};
+}
 function fmt(ms){
   ms = Math.max(0, ms|0);
   const s = Math.floor(ms/1000);
@@ -731,6 +745,16 @@ function checkWinFrom(boardStr, x, y, ch){
     if(cnt>=WIN) return true;
   }
   return false;
+}
+
+function drawPreviewCell(x, y){
+  if(x < 0 || y < 0) return;
+  const {size, ox, oy} = getSquareArea();
+  const cell = size / N;
+  ctx.save();
+  ctx.fillStyle = "rgba(180,180,180,0.35)";
+  ctx.fillRect(ox + x*cell, oy + y*cell, cell, cell);
+  ctx.restore();
 }
 
 function renderBoard(boardStr){
@@ -768,6 +792,10 @@ function renderBoard(boardStr){
         ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke();
       }
     }
+  }
+
+  if(touchPreview.active){
+    drawPreviewCell(touchPreview.x, touchPreview.y);
   }
 }
 
@@ -892,6 +920,11 @@ async function openGameById(id){
     if(!snap.exists()) return;
     game = snap.data();
     if(!game.board) game.board = ".".repeat(N*N);
+
+    // nastav mode podle hry (jen aby UI/Swap fungoval konzistentně)
+    if(game.mode === "ranked") mode = "ranked";
+    else if(game.mode === "trainOnline") mode = "trainOnline";
+
     renderBoard(game.board);
     setHUDFromGame(game);
     startTick();
@@ -906,6 +939,7 @@ async function leaveGame(){
   game = null;
   mode = null;
   local = null;
+  touchPreview.active = false;
   showScreen(scrMenu);
 }
 
@@ -943,8 +977,7 @@ function startLocalTraining(){
 }
 
 /* ============================================================
-   Online training rooms:
-   trainingRooms/{code} {status, host, guest, gameId}
+   Online training rooms
 ============================================================ */
 async function onlineTrainingMenu(){
   openSheet("Online trénink", `
@@ -1046,7 +1079,6 @@ async function joinTrainingRoom(code){
       if(r.status !== "waiting") throw new Error("TAKEN");
       if(r.host?.accountId === accountId) throw new Error("SELF");
 
-      // create game
       const gRef = doc(collection(db,"games"));
       tx.set(gRef,{
         mode:"trainOnline",
@@ -1055,11 +1087,9 @@ async function joinTrainingRoom(code){
         n:N, win:WIN,
         board:".".repeat(N*N),
 
-        // host = p1, guest = p2
         p1: { accountId: r.host.accountId, nick: r.host.nick },
         p2: { accountId: accountId, nick: me.nick },
 
-        // assign X/O: host = X, guest = O
         xPerson: 0,
         turnPerson: 0,
 
@@ -1093,10 +1123,7 @@ async function joinTrainingRoom(code){
 }
 
 /* ============================================================
-   Ranked matchmaking:
-   rankedQueue/{accountId} {rating, createdAt}
-   games/{id} with mode:"ranked", rated:true
-   pairDaily/{pairKey} {count}
+   Ranked matchmaking
 ============================================================ */
 let unsubQueueWatch = null;
 
@@ -1129,12 +1156,10 @@ async function startRankedQueue(){
     closeSheet();
   });
 
-  // attempt match now (client-side)
   await tryMatchRanked();
 }
 
 async function tryMatchRanked(){
-  // pick opponent from queue (oldest) that doesn't violate pair limit
   const q = query(collection(db,"rankedQueue"), orderBy("createdAt","asc"), limit(15));
   const snap = await getDocs(q);
 
@@ -1156,17 +1181,14 @@ async function tryMatchRanked(){
   }
 
   if(!chosen){
-    // no compatible opponent now; just wait (simple polling)
     if(!unsubQueueWatch){
       unsubQueueWatch = onSnapshot(collection(db,"rankedQueue"), async ()=>{
-        // try occasionally when queue changes
         await tryMatchRanked();
       });
     }
     return;
   }
 
-  // Create game in a transaction (verify both still queued + increment pairDaily count)
   try{
     const gid = await runTransaction(db, async (tx)=>{
       const meQ = doc(db,"rankedQueue", accountId);
@@ -1182,7 +1204,6 @@ async function tryMatchRanked(){
       const count = pairSnap.exists() ? (pairSnap.data().count||0) : 0;
       if(count >= 2) throw new Error("PAIR_LIMIT");
 
-      // create game
       const gRef = doc(collection(db,"games"));
       tx.set(gRef,{
         mode:"ranked",
@@ -1192,11 +1213,9 @@ async function tryMatchRanked(){
         n:N, win:WIN,
         board:".".repeat(N*N),
 
-        // p1 older queue entry = chosen, p2 = me
         p1: { accountId: chosen.id, nick: chosen.nick },
         p2: { accountId: accountId, nick: me.nick },
 
-        // simple assignment: p1 = X, p2 = O
         xPerson: 0,
         turnPerson: 0,
 
@@ -1208,10 +1227,7 @@ async function tryMatchRanked(){
         lastAt: serverTimestamp()
       });
 
-      // increment pair count
       tx.set(pairRef, { count: count+1, updatedAt: serverTimestamp() }, {merge:true});
-
-      // remove both from queue
       tx.delete(meQ);
       tx.delete(opQ);
 
@@ -1224,12 +1240,9 @@ async function tryMatchRanked(){
 
   }catch(e){
     const m = String(e.message||"");
-    if(m.includes("PAIR_LIMIT")){
-      // someone else matched; try again
-      await tryMatchRanked();
-    }else if(m.includes("QUEUE_CHANGED")){
-      await tryMatchRanked();
-    }else{
+    if(m.includes("PAIR_LIMIT")) await tryMatchRanked();
+    else if(m.includes("QUEUE_CHANGED")) await tryMatchRanked();
+    else{
       console.error(e);
       showToast(toast5,"Chyba párování",900);
     }
@@ -1251,7 +1264,6 @@ async function placeAt(x,y){
     if(local.over) return;
     if(local.board[idx] !== ".") return;
 
-    // odečti čas aktivnímu hráči
     const p = local.turnPerson;
     const elapsed = Math.max(0, Date.now() - local.turnStartMs);
     local.timeLeft[p] = Math.max(0, local.timeLeft[p] - elapsed);
@@ -1262,11 +1274,8 @@ async function placeAt(x,y){
     local.moveCount++;
     vib(10);
 
-    if(local.moveCount === 1){
-      local.swapAvailable = true;
-    }else{
-      local.swapAvailable = false;
-    }
+    if(local.moveCount === 1) local.swapAvailable = true;
+    else local.swapAvailable = false;
 
     renderBoard(local.board);
 
@@ -1299,9 +1308,6 @@ async function placeAt(x,y){
 
   const boardStr = game.board || ".".repeat(N*N);
   if(boardStr[idx] !== ".") return;
-
-  const xPerson = game.xPerson ?? 0;
-  const ch = (myIdx === xPerson) ? "X" : "O";
 
   try{
     await runTransaction(db, async (tx)=>{
@@ -1339,11 +1345,8 @@ async function placeAt(x,y){
         moveCount: (g.moveCount ?? 0) + 1
       };
 
-      if(patch.moveCount === 1){
-        patch.swapAvailable = true;
-      }else{
-        patch.swapAvailable = false;
-      }
+      if(patch.moveCount === 1) patch.swapAvailable = true;
+      else patch.swapAvailable = false;
 
       if(winner!==null){
         patch.status = "ended";
@@ -1357,7 +1360,6 @@ async function placeAt(x,y){
       }
 
       tx.update(gRef, patch);
-
       tx.set(doc(collection(gRef,"moves")), { x,y,ch:ch2, by: accountId, at: serverTimestamp() });
     });
 
@@ -1369,22 +1371,77 @@ async function placeAt(x,y){
   }
 }
 
-board.addEventListener("pointerdown",(e)=>{
+/* ============================================================
+   Dotykové ovládání: tap vs long-press preview + drag
+============================================================ */
+board.addEventListener("pointerdown", (e)=>{
   if(sheet.classList.contains("open")) return;
+
+  board.setPointerCapture(e.pointerId);
+
   const pos = canvasPos(e);
-  const {size,ox,oy} = getSquareArea();
-  if(pos.x<ox||pos.x>ox+size||pos.y<oy||pos.y>oy+size) return;
-  const cell=size/N;
-  const x=Math.floor((pos.x-ox)/cell);
-  const y=Math.floor((pos.y-oy)/cell);
-  placeAt(x,y);
+  const cell = getCellFromPoint(pos.x, pos.y);
+  if(!cell) return;
+
+  touchPreview.active = false;
+  touchPreview.x = -1;
+  touchPreview.y = -1;
+
+  touchPreview.timer = setTimeout(()=>{
+    touchPreview.active = true;
+    touchPreview.x = cell.x;
+    touchPreview.y = cell.y;
+    renderBoard(mode==="local" ? local.board : (game?.board || ".".repeat(N*N)));
+  }, 250);
+});
+
+board.addEventListener("pointermove", (e)=>{
+  if(!touchPreview.active) return;
+
+  const pos = canvasPos(e);
+  const cell = getCellFromPoint(pos.x, pos.y);
+  if(!cell) return;
+
+  if(cell.x !== touchPreview.x || cell.y !== touchPreview.y){
+    touchPreview.x = cell.x;
+    touchPreview.y = cell.y;
+    renderBoard(mode==="local" ? local.board : (game?.board || ".".repeat(N*N)));
+  }
+});
+
+board.addEventListener("pointerup", (e)=>{
+  clearTimeout(touchPreview.timer);
+
+  const pos = canvasPos(e);
+  const cell = getCellFromPoint(pos.x, pos.y);
+
+  // dlouhý stisk -> potvrď náhled
+  if(touchPreview.active){
+    const x = touchPreview.x;
+    const y = touchPreview.y;
+    touchPreview.active = false;
+    renderBoard(mode==="local" ? local.board : (game?.board || ".".repeat(N*N)));
+    if(x>=0 && y>=0) placeAt(x,y);
+    return;
+  }
+
+  // krátký tap
+  if(cell){
+    placeAt(cell.x, cell.y);
+  }
+
+  touchPreview.active = false;
+});
+
+board.addEventListener("pointercancel", ()=>{
+  clearTimeout(touchPreview.timer);
+  touchPreview.active = false;
 });
 
 /* ============================================================
    SWAP button behavior (local + online)
 ============================================================ */
 btnSwap.addEventListener("click", async ()=>{
-  // lokál
   if(mode === "local"){
     if(!local?.swapAvailable || local.turnPerson !== 1 || local.over) return;
 
@@ -1392,7 +1449,6 @@ btnSwap.addEventListener("click", async ()=>{
     local.swapAvailable = false;
     local.xPerson = 1 - local.xPerson;
 
-    // tah zůstává hráči 1 (ten SWAPnul)
     local.turnPerson = 1;
     local.turnStartMs = Date.now();
 
@@ -1406,7 +1462,6 @@ btnSwap.addEventListener("click", async ()=>{
     return;
   }
 
-  // online / ranked
   if(!gameId || !game) return;
   if(game.status !== "active") return;
 
@@ -1447,102 +1502,6 @@ btnSwap.addEventListener("click", async ()=>{
     showToast(toast5, "SWAP chyba", 900);
   }
 });
-
-/* ============================================================
-   End game handling + rating (simple ELO) + delta24
-============================================================ */
-function eloDelta(rA, rB, scoreA, K=24){
-  // scoreA = 1 win, 0.5 draw, 0 loss
-  const EA = 1/(1 + Math.pow(10, (rB-rA)/400));
-  const d = Math.round(K*(scoreA - EA));
-  return d;
-}
-
-async function finalizeIfNeeded(g){
-  if(!g || g.status!=="ended") return;
-  if(g._finalizedClient) return;
-  g._finalizedClient = true;
-
-  // local toast
-  const myIdx = myPersonIndex(g);
-  const w = g.winnerPerson;
-  if(w===0 || w===1){
-    showToast(toast5, (myIdx===w) ? "Výhra" : "Prohra", 1200);
-  }else{
-    showToast(toast5, "Konec", 900);
-  }
-
-  // Only ranked games affect rating
-  if(!(g.mode==="ranked" && g.rated===true)) return;
-
-  // avoid double-finalize: only p1 client performs rating update (simple)
-  if(myIdx !== 0) return;
-
-  try{
-    await runTransaction(db, async (tx)=>{
-      const gRef = doc(db,"games",gameId);
-      const gs = await tx.get(gRef);
-      if(!gs.exists()) return;
-      const gg = gs.data();
-      if(gg._ratingDone) return;
-      if(gg.mode!=="ranked" || gg.rated!==true || gg.status!=="ended") return;
-
-      const p1 = gg.p1.accountId;
-      const p2 = gg.p2.accountId;
-
-      const u1Ref = doc(db,"users",p1);
-      const u2Ref = doc(db,"users",p2);
-
-      const u1s = await tx.get(u1Ref);
-      const u2s = await tx.get(u2Ref);
-      if(!u1s.exists() || !u2s.exists()) return;
-
-      const u1 = u1s.data();
-      const u2 = u2s.data();
-
-      const r1 = u1.rating ?? 1000;
-      const r2 = u2.rating ?? 1000;
-
-      let s1 = 0.5, s2 = 0.5;
-      if(gg.winnerPerson===0){ s1=1; s2=0; }
-      if(gg.winnerPerson===1){ s1=0; s2=1; }
-
-      const d1 = eloDelta(r1,r2,s1);
-      const d2 = -d1;
-
-      tx.update(u1Ref,{
-        rating: r1 + d1,
-        delta24: (u1.delta24 ?? 0) + d1,
-        ratedToday: (u1.ratedToday ?? 0) + 1,
-        lastSeenAt: serverTimestamp()
-      });
-      tx.update(u2Ref,{
-        rating: r2 + d2,
-        delta24: (u2.delta24 ?? 0) + d2,
-        ratedToday: (u2.ratedToday ?? 0) + 1,
-        lastSeenAt: serverTimestamp()
-      });
-
-      tx.update(gRef,{ _ratingDone:true });
-
-      // log match
-      tx.set(doc(collection(db,"matches")), {
-        at: serverTimestamp(),
-        gameId,
-        p1, p2,
-        winnerPerson: gg.winnerPerson ?? null,
-        d1, d2
-      });
-    });
-  }catch(e){
-    console.error(e);
-  }
-}
-
-/* Hook finalize from snapshot: */
-function attachFinalizeWatcher(){
-  if(!unsubGame) return;
-}
 
 /* ============================================================
    Resign / Back
@@ -1638,7 +1597,7 @@ btnNickOk.addEventListener("click", ()=> createAccountWithNick(inNick.value));
 btnAltLogin.addEventListener("click", loginWithNickAndCode);
 
 /* ============================================================
-   Auto-restore: if accountId stored -> go menu
+   Auto-restore
 ============================================================ */
 async function boot(){
   await ensureAnon();
@@ -1653,42 +1612,12 @@ async function boot(){
       showScreen(scrMenu);
       return;
     }else{
-      // stale
       localStorage.removeItem("pisk_accountId");
     }
   }
   showScreen(scrNick);
 }
 boot();
-
-/* ============================================================
-   Watch game ended -> finalize rating + toast
-============================================================ */
-function installGameEndWatcher(){
-  // finalize called in snapshot (we already have in openGameById snapshot)
-}
-const origOpenGameById = openGameById;
-openGameById = async (id)=>{
-  await origOpenGameById(id);
-  // patch snapshot finalize: our snapshot is in origOpenGameById - we need to rewrap,
-  // simplest: add a second listener on the same doc.
-  const gRef = doc(db,"games",id);
-  const unsub2 = onSnapshot(gRef,(snap)=>{
-    if(!snap.exists()) return;
-    const gg = snap.data();
-    if(gg.status==="ended"){
-      finalizeIfNeeded(gg);
-      // auto-close after a moment
-      setTimeout(()=>{ /* keep screen; user decides back */ }, 250);
-    }
-  });
-  // store to clean up
-  const prev = unsubGame;
-  unsubGame = ()=>{
-    try{ prev && prev(); }catch(e){}
-    try{ unsub2 && unsub2(); }catch(e){}
-  };
-};
 
 /* ============================================================
    Responsive redraw
