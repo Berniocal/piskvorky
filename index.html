@@ -319,34 +319,18 @@
     <div id="toast4" class="toast"></div>
   </div>
 
-  <!-- SCREEN: GAME -->
-  <div id="scrGame" class="screen">
-    <div class="hud">
-      <div class="row">
-        <button id="btnBack" class="iconBtn" title="Zpět">⟵</button>
-        <button id="btnResign" class="iconBtn" title="Vzdát">🏳</button>
-        <button id="btnSwap" class="iconBtn" title="Prohodit strany">⇄</button>
+  <!-- Bottom sheet / modal -->
+  <div id="sheet" class="sheet hidden" aria-hidden="true">
+    <div class="sheetCard">
+      <div class="sheetHead">
+        <div id="sheetTitle">Panel</div>
+        <button class="iconBtn" id="sheetClose" title="Zavřít">✕</button>
       </div>
-      <div class="row">
-        <div id="clockA" class="clockPill">—</div>
-        <button id="btnTurn" class="turnBtn" title="Kdo je na tahu"></button>
-        <div id="clockB" class="clockPill">—</div>
-      </div>
+      <div id="sheetBody"></div>
     </div>
-
-    <canvas id="board"></canvas>
-
-    <!-- Bottom sheet modal -->
-    <div id="sheet" aria-hidden="true">
-      <div class="panel">
-        <div class="panelTitle" id="sheetTitle">—</div>
-        <div id="sheetBody"></div>
-      </div>
-    </div>
-
-    <div id="toast5" class="toast"></div>
   </div>
 
+  <div id="toast5" class="toast"></div>
 </div>
 
 <script type="module">
@@ -554,6 +538,37 @@ function watchMe(){
     me = snap.data();
     if(scrMenu.classList.contains("active")) setMeUI();
   });
+
+let unsubInbox = null;
+function watchInbox(){
+  if(unsubInbox) return;
+  // Posloucháme "inbox" s nabídkami zápasů (používá se pro ranked párování)
+  const offersCol = collection(db,"matchInbox", accountId, "offers");
+  unsubInbox = onSnapshot(query(offersCol, orderBy("createdAt","asc"), limit(1)), async (snap)=>{
+    if(snap.empty) return;
+    const d = snap.docs[0];
+    const offer = d.data() || {};
+    const gid = offer.gameId;
+    if(!gid) return;
+
+    try{
+      // úklid: zavři panely a frontu
+      if(unsubQueueWatch){ try{ unsubQueueWatch(); }catch(e){} unsubQueueWatch=null; }
+      closeSheet();
+
+      // smaž nabídku (ať se nespouští pořád dokola)
+      try{ await deleteDoc(d.ref); }catch(e){}
+
+      // smaž moji queue, pokud tam ještě visí
+      try{ await deleteDoc(doc(db,"rankedQueue", accountId)); }catch(e){}
+
+      await openGameById(gid);
+    }catch(e){
+      console.error(e);
+      showToast(toast5,"Chyba při přijetí zápasu",1200);
+    }
+  });
+}
 }
 
 async function logoutAll(){
@@ -657,6 +672,7 @@ async function loginWithNickAndCode(){
 
   await loadMe();
   watchMe();
+  watchInbox();
   setMeUI();
   showScreen(scrMenu);
 }
@@ -1159,7 +1175,7 @@ async function startRankedQueue(){
   await tryMatchRanked();
 }
 
-async function tryMatchRanked(){
+async async function tryMatchRanked(){
   const q = query(collection(db,"rankedQueue"), orderBy("createdAt","asc"), limit(15));
   const snap = await getDocs(q);
 
@@ -1228,8 +1244,16 @@ async function tryMatchRanked(){
       });
 
       tx.set(pairRef, { count: count+1, updatedAt: serverTimestamp() }, {merge:true});
+
+      // Každý smaže jen svoji frontu. Soupeři pošleme "nabídku" do inboxu.
+      const offerRef = doc(collection(db,"matchInbox", chosen.id, "offers"));
+      tx.set(offerRef,{
+        gameId: gRef.id,
+        from: { accountId: accountId, nick: me.nick },
+        createdAt: serverTimestamp()
+      });
+
       tx.delete(meQ);
-      tx.delete(opQ);
 
       return gRef.id;
     });
@@ -1586,6 +1610,7 @@ btnCopyCode.addEventListener("click", async ()=>{
 btnGoMenu.addEventListener("click", async ()=>{
   await loadMe();
   watchMe();
+  watchInbox();
   setMeUI();
   showScreen(scrMenu);
 });
@@ -1608,6 +1633,7 @@ async function boot(){
     await loadMe();
     if(me){
       watchMe();
+      watchInbox();
       setMeUI();
       showScreen(scrMenu);
       return;
