@@ -1000,7 +1000,7 @@ async function openGameById(id){
     // nastav mode podle hry (jen aby UI/Swap fungoval konzistentně)
     if(game.mode === "ranked") mode = "ranked";
   watchMatchInbox();
-    else if(game.mode === "trainOnline") mode = "trainOnline";
+    else (game.mode === "trainOnline") mode = "trainOnline";
 
     renderBoard(game.board);
     setHUDFromGame(game);
