@@ -224,6 +224,40 @@
     color: rgba(255,255,255,0.78);
     margin-top: 8px;
   }
+
+  /* ===== Board full width on mobile ===== */
+  #scrGame .wrap{overflow:hidden}
+  #gameBoardCard{flex:1; display:flex; flex-direction:column; padding:12px;}
+  #boardWrap{flex:1; display:flex; align-items:center; justify-content:center; width:100%;}
+  #board{display:block; border-radius:14px; background:#0b1220; touch-action:manipulation;}
+  @media (max-width: 520px){
+    #scrGame .wrap{padding:12px;}
+  }
+
+  /* ===== Win modal ===== */
+  #winModal{
+    display:none;
+    position:fixed; inset:0;
+    background: rgba(0,0,0,0.55);
+    z-index:9999;
+    align-items:center; justify-content:center;
+    padding:16px;
+  }
+  #winModal.show{display:flex;}
+  #winCard{
+    width:min(520px,100%);
+    background: rgba(15,23,34,0.92);
+    outline: 1px solid rgba(255,255,255,0.12);
+    border-radius: 22px;
+    padding: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  }
+  #winTitle{font-size:20px;font-weight:950;margin-bottom:6px;}
+  #winText{opacity:.9;margin-bottom:12px;}
+  #winBtns{display:flex;gap:10px;}
+  #winBtns button{flex:1;}
+  #rematchWait{margin-top:10px;opacity:.85;display:none;}
+
 </style>
 </head>
 
@@ -292,13 +326,13 @@
     <div id="toast3" class="toast"></div>
   </div>
 
-  <!-- SCREEN: GAME -->
+    <!-- SCREEN: GAME -->
   <div id="scrGame" class="screen hidden">
-    <div class="wrap" style="gap:12px;">
-      <div class="card">
+    <div class="wrap" style="gap:12px;display:flex;flex-direction:column;">
+      <div class="card" id="gameTopCard">
         <div class="row2">
           <button id="btnBack" class="iconBtn" title="Zpět">⟵</button>
-          <div style="display:flex;gap:10px;align-items:center;justify-content:flex-end;">
+          <div style="display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap;">
             <span class="pill" id="clockA">—</span>
             <span class="pill" id="clockB">—</span>
             <button id="btnTurn" class="iconBtn" title="Konec tahu">⏱</button>
@@ -308,8 +342,10 @@
         </div>
       </div>
 
-      <div class="card" style="padding:12px;">
-        <canvas id="board" width="720" height="720" style="width:100%;height:auto;display:block;border-radius:14px;background:#0b1220"></canvas>
+      <div class="card" id="gameBoardCard">
+        <div id="boardWrap">
+          <canvas id="board"></canvas>
+        </div>
       </div>
     </div>
     <div id="toast5" class="toast"></div>
@@ -343,6 +379,20 @@
         <button class="iconBtn" id="trClose" title="Zavřít">✕</button>
       </div>
       <div class="sheetBody" id="sheetBody"></div>
+    </div>
+  </div>
+
+
+  <!-- Win / Rematch modal -->
+  <div id="winModal" aria-hidden="true">
+    <div id="winCard">
+      <div id="winTitle">—</div>
+      <div id="winText">—</div>
+      <div id="winBtns">
+        <button id="btnRematchYes" class="btn good"><span>Odveta</span><span>✅</span></button>
+        <button id="btnRematchNo" class="btn bad"><span>Zpět do menu</span><span>❌</span></button>
+      </div>
+      <div id="rematchWait"></div>
     </div>
   </div>
 
@@ -489,6 +539,32 @@ function closeSheet(){
   sheet.classList.remove("open");
   sheet.setAttribute("aria-hidden","true");
   sheetBody.innerHTML = "";
+}
+
+/* ============================================================
+   Win modal + rematch
+============================================================ */
+const winModal = $("#winModal");
+const winTitle = $("#winTitle");
+const winText = $("#winText");
+const btnRematchYes = $("#btnRematchYes");
+const btnRematchNo  = $("#btnRematchNo");
+const rematchWait = $("#rematchWait");
+
+function showWinModal(title, text){
+  winTitle.textContent = title;
+  winText.textContent = text || "";
+  rematchWait.style.display = "none";
+  winModal.classList.add("show");
+  winModal.setAttribute("aria-hidden","false");
+}
+function setRematchWaiting(msg){
+  rematchWait.style.display = "block";
+  rematchWait.textContent = msg;
+}
+function hideWinModal(){
+  winModal.classList.remove("show");
+  winModal.setAttribute("aria-hidden","true");
 }
 sheet.addEventListener("pointerdown",(e)=>{ if(e.target===sheet) closeSheet(); });
 
@@ -655,6 +731,7 @@ async function loginWithNickAndCode(){
   await loadMe();
   watchMe();
   setMeUI();
+  watchMatchInbox();
   showScreen(scrMenu);
 }
 
@@ -666,9 +743,14 @@ const WIN = 5;
 
 function resizeCanvasToScreen(){
   const dpr = window.devicePixelRatio || 1;
-  const rect = board.getBoundingClientRect();
-  board.width = Math.floor(rect.width * dpr);
-  board.height = Math.floor(rect.height * dpr);
+  const wrap = $("#boardWrap");
+  const size = Math.max(240, Math.floor(Math.min(wrap.clientWidth || 0, wrap.clientHeight || 0)));
+  // CSS size
+  board.style.width = size + "px";
+  board.style.height = size + "px";
+  // actual backing store
+  board.width = Math.floor(size * dpr);
+  board.height = Math.floor(size * dpr);
   ctx.setTransform(dpr,0,0,dpr,0,0);
 }
 function clear(){
@@ -693,13 +775,10 @@ function drawRoundedRect(x,y,w,h,r){
 function getSquareArea(){
   const W = board.getBoundingClientRect().width;
   const H = board.getBoundingClientRect().height;
-  const topPad = 70;
-  const pad = 18;
-  const availW = W - pad*2;
-  const availH = H - pad*2 - topPad;
-  const size = Math.max(240, Math.floor(Math.min(availW, availH)));
+  const pad = 12;
+  const size = Math.floor(Math.min(W, H) - pad*2);
   const ox = Math.floor((W - size)/2);
-  const oy = Math.floor((H - size)/2 + topPad/2);
+  const oy = Math.floor((H - size)/2);
   return {W,H,size,ox,oy};
 }
 function canvasPos(e){
@@ -920,11 +999,80 @@ async function openGameById(id){
 
     // nastav mode podle hry (jen aby UI/Swap fungoval konzistentně)
     if(game.mode === "ranked") mode = "ranked";
+  watchMatchInbox();
     else if(game.mode === "trainOnline") mode = "trainOnline";
 
     renderBoard(game.board);
     setHUDFromGame(game);
     startTick();
+
+    // === Ended -> show result + rematch ===
+    if(game.status === "ended"){
+      const myIdx = myPersonIndex(game);
+      if(myIdx !== null){
+        const winner = game.winnerPerson;
+        const reason = game.endReason || "win";
+        if(winner === myIdx){
+          showWinModal("Vyhrál jsi 🏆", reason==="resign" ? "Soupeř to vzdal." : "Gratulace! Chceš odvetu?");
+        }else{
+          showWinModal("Prohrál jsi 😅", reason==="resign" ? "Vzdal jsi to." : "Chceš odvetu?");
+        }
+
+        // rematch flow
+        const want = game.rematchWant || {};
+        const p1 = game.p1?.accountId;
+        const p2 = game.p2?.accountId;
+
+        // někdo odmítl => oba zpět do menu (u toho kdo odmítl hned)
+        if((p1 && want[p1]===false) || (p2 && want[p2]===false)){
+          hideWinModal();
+          leaveGame();
+          return;
+        }
+
+        // pokud já už dal ANO, ukaž čekání
+        if(want[accountId]===true){
+          setRematchWaiting("Čekám na soupeře…");
+        }
+
+        // oba ANO -> vytvořit novou hru jen jedním klientem (p1)
+        if(p1 && p2 && want[p1]===true && want[p2]===true){
+          if(!game.rematchGameId){
+            if(accountId === p1){
+              try{
+                const newRef = doc(collection(db,"games"));
+                await setDoc(newRef,{
+                  mode: game.mode || "trainOnline",
+                  rated: !!game.rated,
+                  status:"active",
+                  createdAt: serverTimestamp(),
+                  n:N, win:WIN,
+                  board:".".repeat(N*N),
+                  p1: game.p1,
+                  p2: game.p2,
+                  xPerson: 0,
+                  turnPerson: 0,
+                  timeLeft: [10*60*1000, 10*60*1000],
+                  turnStartedAt: serverTimestamp(),
+                  moveCount: 0,
+                  swapAvailable: false,
+                  lastAt: serverTimestamp()
+                }, {merge:false});
+                await updateDoc(doc(db,"games",gameId), { rematchGameId: newRef.id });
+              }catch(e){ console.error(e); showToast(toast5,"Chyba odvety",900); }
+            }else{
+              setRematchWaiting("Zakládám odvetu…");
+            }
+          }else{
+            hideWinModal();
+            await openGameById(game.rematchGameId);
+            return;
+          }
+        }
+      }
+    }else{
+      hideWinModal();
+    }
   });
 }
 
@@ -1123,6 +1271,25 @@ async function joinTrainingRoom(code){
    Ranked matchmaking
 ============================================================ */
 let unsubQueueWatch = null;
+let unsubInbox = null;
+
+function watchMatchInbox(){
+  if(unsubInbox){ try{unsubInbox();}catch(e){} unsubInbox=null; }
+  if(!accountId) return;
+  const offers = query(collection(db,"matchInbox", accountId, "offers"), orderBy("createdAt","asc"), limit(1));
+  unsubInbox = onSnapshot(offers, async (snap)=>{
+    if(snap.empty) return;
+    const d = snap.docs[0];
+    const offer = d.data() || {};
+    const gid = offer.gameId;
+    // consume offer
+    try{ await deleteDoc(d.ref); }catch(e){}
+    // leave queue if still there
+    try{ await deleteDoc(doc(db,"rankedQueue", accountId)); }catch(e){}
+    closeSheet();
+    if(gid) await openGameById(gid);
+  });
+}
 
 async function startRankedQueue(){
   closeSheet();
@@ -1223,6 +1390,10 @@ async function tryMatchRanked(){
 
         lastAt: serverTimestamp()
       });
+
+      // notify opponent
+      const offerRef = doc(collection(db,"matchInbox", chosen.id, "offers"));
+      tx.set(offerRef, { gameId: gRef.id, from: accountId, createdAt: serverTimestamp() });
 
       tx.set(pairRef, { count: count+1, updatedAt: serverTimestamp() }, {merge:true});
       tx.delete(meQ);
@@ -1527,6 +1698,22 @@ btnResign.addEventListener("click", async ()=>{
 });
 btnBack.addEventListener("click", leaveGame);
 
+btnRematchYes.addEventListener("click", async ()=>{
+  if(!gameId || !game) return;
+  try{
+    await updateDoc(doc(db,"games",gameId), { [`rematchWant.${accountId}`]: true, rematchAt: serverTimestamp() });
+    setRematchWaiting("Čekám na soupeře…");
+  }catch(e){ console.error(e); showToast(toast5,"Chyba odvety",900); }
+});
+btnRematchNo.addEventListener("click", async ()=>{
+  if(!gameId || !game) { hideWinModal(); leaveGame(); return; }
+  try{
+    await updateDoc(doc(db,"games",gameId), { [`rematchWant.${accountId}`]: false, rematchAt: serverTimestamp() });
+  }catch(e){ /* ignore */ }
+  hideWinModal();
+  leaveGame();
+});
+
 /* ============================================================
    Menu actions
 ============================================================ */
@@ -1606,6 +1793,7 @@ async function boot(){
     if(me){
       watchMe();
       setMeUI();
+      watchMatchInbox();
       showScreen(scrMenu);
       return;
     }else{
@@ -1615,6 +1803,15 @@ async function boot(){
   showScreen(scrNick);
 }
 boot();
+
+/* ===== Ensure board fills screen nicely ===== */
+function resizeBoardCanvas(){
+  // force a redraw when entering game
+  if(mode==="local" && local) renderBoard(local.board);
+  if(game && game.board) renderBoard(game.board);
+}
+window.addEventListener("orientationchange", ()=> setTimeout(resizeBoardCanvas, 120));
+
 
 /* ============================================================
    Responsive redraw
