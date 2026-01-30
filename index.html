@@ -228,41 +228,34 @@
 </head>
 
 <body>
-<div id="app">
 
-  <!-- SCREEN: FIRST RUN (nickname only) -->
-  <div id="scrNick" class="screen active">
+  <!-- SCREEN: NICK -->
+  <div id="scrNick" class="screen">
     <div class="wrap">
       <div class="card">
-        <div class="row2">
-          <div>
-            <div class="label">Přezdívka</div>
-            <div class="hint">Musí být volná. Bez mezer je nejlepší.</div>
-          </div>
-          <button id="btnAltLogin" class="iconBtn" title="Přihlášení kódem">🔑</button>
+        <h1>Piškvorky</h1>
+        <div class="hint">Zadej přezdívku (nick)</div>
+        <input id="inNick" autocomplete="nickname" placeholder="např. Jenda" />
+        <div class="row">
+          <button id="btnNickOk" class="btn primary"><span>Pokračovat</span><span>→</span></button>
+          <button id="btnAltLogin" class="btn"><span>Jiný účet</span><span>👤</span></button>
         </div>
-        <input id="inNick" class="inp" placeholder="např. Jenda" maxlength="20" autocomplete="nickname" />
-        <div style="height:12px"></div>
-        <button id="btnNickOk" class="btn primary"><span>Potvrdit</span><span>→</span></button>
-        <div class="hint" style="margin-top:10px;">Při prvním potvrzení dostaneš svůj 5místný kód.</div>
       </div>
     </div>
     <div id="toast1" class="toast"></div>
   </div>
 
-  <!-- SCREEN: SHOW USER CODE -->
-  <div id="scrCode" class="screen">
+  <!-- SCREEN: CODE -->
+  <div id="scrCode" class="screen hidden">
     <div class="wrap">
       <div class="card">
         <div class="label">Tvůj kód</div>
-        <div class="hint">Ulož si ho bezpečně. Bez něj se jinde nepřihlásíš.</div>
-        <div style="height:12px"></div>
-        <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;">
-          <span class="pill" id="myCodePill">_____</span>
+        <div class="hint">Pošli soupeři kód pro spárování.</div>
+        <div class="row2" style="align-items:center;">
+          <div class="pill" id="myCodePill">—</div>
           <button id="btnCopyCode" class="iconBtn" title="Kopírovat">⧉</button>
         </div>
-        <pre id="codeExplain"></pre>
-        <div style="height:12px"></div>
+        <div class="hint" id="codeExplain">—</div>
         <button id="btnGoMenu" class="btn primary"><span>Pokračovat</span><span>→</span></button>
       </div>
     </div>
@@ -270,7 +263,7 @@
   </div>
 
   <!-- SCREEN: MENU -->
-  <div id="scrMenu" class="screen">
+  <div id="scrMenu" class="screen hidden">
     <div class="wrap">
       <div class="card">
         <div class="row2">
@@ -299,8 +292,31 @@
     <div id="toast3" class="toast"></div>
   </div>
 
+  <!-- SCREEN: GAME -->
+  <div id="scrGame" class="screen hidden">
+    <div class="wrap" style="gap:12px;">
+      <div class="card">
+        <div class="row2">
+          <button id="btnBack" class="iconBtn" title="Zpět">⟵</button>
+          <div style="display:flex;gap:10px;align-items:center;justify-content:flex-end;">
+            <span class="pill" id="clockA">—</span>
+            <span class="pill" id="clockB">—</span>
+            <button id="btnTurn" class="iconBtn" title="Konec tahu">⏱</button>
+            <button id="btnSwap" class="iconBtn" title="Swap (povoleno jen někdy)">⇄</button>
+            <button id="btnResign" class="iconBtn" title="Vzdát">🏳️</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="padding:12px;">
+        <canvas id="board" width="720" height="720" style="width:100%;height:auto;display:block;border-radius:14px;background:#0b1220"></canvas>
+      </div>
+    </div>
+    <div id="toast5" class="toast"></div>
+  </div>
+
   <!-- SCREEN: LADDER -->
-  <div id="scrLadder" class="screen">
+  <div id="scrLadder" class="screen hidden">
     <div class="wrap">
       <div class="card">
         <div class="row2">
@@ -323,15 +339,12 @@
   <div id="sheet" class="sheet hidden" aria-hidden="true">
     <div class="sheetCard">
       <div class="sheetHead">
-        <div id="sheetTitle">Panel</div>
-        <button class="iconBtn" id="sheetClose" title="Zavřít">✕</button>
+        <div class="sheetTitle" id="sheetTitle">—</div>
+        <button class="iconBtn" id="trClose" title="Zavřít">✕</button>
       </div>
-      <div id="sheetBody"></div>
+      <div class="sheetBody" id="sheetBody"></div>
     </div>
   </div>
-
-  <div id="toast5" class="toast"></div>
-</div>
 
 <script type="module">
 /* ============================================================
@@ -538,37 +551,6 @@ function watchMe(){
     me = snap.data();
     if(scrMenu.classList.contains("active")) setMeUI();
   });
-
-let unsubInbox = null;
-function watchInbox(){
-  if(unsubInbox) return;
-  // Posloucháme "inbox" s nabídkami zápasů (používá se pro ranked párování)
-  const offersCol = collection(db,"matchInbox", accountId, "offers");
-  unsubInbox = onSnapshot(query(offersCol, orderBy("createdAt","asc"), limit(1)), async (snap)=>{
-    if(snap.empty) return;
-    const d = snap.docs[0];
-    const offer = d.data() || {};
-    const gid = offer.gameId;
-    if(!gid) return;
-
-    try{
-      // úklid: zavři panely a frontu
-      if(unsubQueueWatch){ try{ unsubQueueWatch(); }catch(e){} unsubQueueWatch=null; }
-      closeSheet();
-
-      // smaž nabídku (ať se nespouští pořád dokola)
-      try{ await deleteDoc(d.ref); }catch(e){}
-
-      // smaž moji queue, pokud tam ještě visí
-      try{ await deleteDoc(doc(db,"rankedQueue", accountId)); }catch(e){}
-
-      await openGameById(gid);
-    }catch(e){
-      console.error(e);
-      showToast(toast5,"Chyba při přijetí zápasu",1200);
-    }
-  });
-}
 }
 
 async function logoutAll(){
@@ -672,7 +654,6 @@ async function loginWithNickAndCode(){
 
   await loadMe();
   watchMe();
-  watchInbox();
   setMeUI();
   showScreen(scrMenu);
 }
@@ -1244,16 +1225,8 @@ async function tryMatchRanked(){
       });
 
       tx.set(pairRef, { count: count+1, updatedAt: serverTimestamp() }, {merge:true});
-
-      // Každý smaže jen svoji frontu. Soupeři pošleme "nabídku" do inboxu.
-      const offerRef = doc(collection(db,"matchInbox", chosen.id, "offers"));
-      tx.set(offerRef,{
-        gameId: gRef.id,
-        from: { accountId: accountId, nick: me.nick },
-        createdAt: serverTimestamp()
-      });
-
       tx.delete(meQ);
+      tx.delete(opQ);
 
       return gRef.id;
     });
@@ -1610,7 +1583,6 @@ btnCopyCode.addEventListener("click", async ()=>{
 btnGoMenu.addEventListener("click", async ()=>{
   await loadMe();
   watchMe();
-  watchInbox();
   setMeUI();
   showScreen(scrMenu);
 });
@@ -1633,7 +1605,6 @@ async function boot(){
     await loadMe();
     if(me){
       watchMe();
-      watchInbox();
       setMeUI();
       showScreen(scrMenu);
       return;
