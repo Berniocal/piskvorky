@@ -1350,26 +1350,7 @@ async function placeAt(x,y){
 /* ============================================================
    Dotykové ovládání: tap vs long-press preview + drag
 ============================================================ */
-board.addEventListener("pointerdown", (e)=>{
-  if(sheet.classList.contains("open")) return;
-
-  board.setPointerCapture(e.pointerId);
-
-  const pos = canvasPos(e);
-  const cell = getCellFromPoint(pos.x, pos.y);
-  if(!cell) return;
-
-  touchPreview.active = false;
-  touchPreview.x = -1;
-  touchPreview.y = -1;
-
-  touchPreview.timer = setTimeout(()=>{
-    touchPreview.active = true;
-    touchPreview.x = cell.x;
-    touchPreview.y = cell.y;
-    renderBoard(mode==="local" ? local.board : (game?.board || ".".repeat(N*N)));
-  }, 250);
-});
+);
 
 board.addEventListener("pointermove", (e)=>{
   if(!touchPreview.active) return;
