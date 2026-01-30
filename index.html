@@ -319,12 +319,35 @@
     <div id="toast4" class="toast"></div>
   </div>
 
-  id="sheetBody"></div>
+  <!-- SCREEN: GAME -->
+  <div id="scrGame" class="screen">
+    <div class="hud">
+      <div class="row">
+        <button id="btnBack" class="iconBtn" title="Zpět">⟵</button>
+        <button id="btnResign" class="iconBtn" title="Vzdát">🏳</button>
+        <button id="btnSwap" class="iconBtn" title="Prohodit strany">⇄</button>
+      </div>
+      <div class="row">
+        <div id="clockA" class="clockPill">—</div>
+        <button id="btnTurn" class="turnBtn" title="Kdo je na tahu"></button>
+        <div id="clockB" class="clockPill">—</div>
+      </div>
+    </div>
+
+    <canvas id="board"></canvas>
+
+    <!-- Bottom sheet modal -->
+    <div id="sheet" aria-hidden="true">
+      <div class="panel">
+        <div class="panelTitle" id="sheetTitle">—</div>
+        <div id="sheetBody"></div>
       </div>
     </div>
 
     <div id="toast5" class="toast"></div>
   </div>
+
+</div>
 
 <script type="module">
 /* ============================================================
@@ -406,6 +429,7 @@ const clockA = $("#clockA");
 const clockB = $("#clockB");
 
 const board = $("#board");
+const ctx = board.getContext("2d");
 
 const sheet = $("#sheet");
 const sheetTitle = $("#sheetTitle");
@@ -469,7 +493,7 @@ function closeSheet(){
   sheet.setAttribute("aria-hidden","true");
   sheetBody.innerHTML = "";
 }
-
+sheet.addEventListener("pointerdown",(e)=>{ if(e.target===sheet) closeSheet(); });
 
 function invertBoardXO(s){
   let out = "";
@@ -1350,7 +1374,26 @@ async function placeAt(x,y){
 /* ============================================================
    Dotykové ovládání: tap vs long-press preview + drag
 ============================================================ */
-);
+board.addEventListener("pointerdown", (e)=>{
+  if(sheet.classList.contains("open")) return;
+
+  board.setPointerCapture(e.pointerId);
+
+  const pos = canvasPos(e);
+  const cell = getCellFromPoint(pos.x, pos.y);
+  if(!cell) return;
+
+  touchPreview.active = false;
+  touchPreview.x = -1;
+  touchPreview.y = -1;
+
+  touchPreview.timer = setTimeout(()=>{
+    touchPreview.active = true;
+    touchPreview.x = cell.x;
+    touchPreview.y = cell.y;
+    renderBoard(mode==="local" ? local.board : (game?.board || ".".repeat(N*N)));
+  }, 250);
+});
 
 board.addEventListener("pointermove", (e)=>{
   if(!touchPreview.active) return;
