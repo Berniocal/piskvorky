@@ -998,10 +998,9 @@ async function openGameById(id){
     game = snap.data();
     if(!game.board) game.board = ".".repeat(N*N);
 
-    // nastav mode podle hry (jen aby UI/Swap fungoval konzistentně)
-    if(game.mode === "ranked") mode = "ranked";
-  watchMatchInbox();
-    else if(game.mode === "trainOnline") mode = "trainOnline";
+ if(game.mode === "ranked") mode = "ranked";
+else if(game.mode === "trainOnline") mode = "trainOnline";
+watchMatchInbox();
 
     renderBoard(game.board);
     setHUDFromGame(game);
