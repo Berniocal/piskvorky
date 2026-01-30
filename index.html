@@ -993,12 +993,13 @@ async function openGameById(id){
   gameId = id;
   showScreen(scrGame);
 
-  unsubGame = onSnapshot(doc(db,"games",gameId),(snap)=>{
+  unsubGame = onSnapshot(doc(db,"games",gameId),async (snap)=>{
     if(!snap.exists()) return;
     game = snap.data();
     if(!game.board) game.board = ".".repeat(N*N);
 
- if(game.mode === "ranked") mode = "ranked";
+    // nastav mode podle hry (jen aby UI/Swap fungoval konzistentně)
+    if(game.mode === "ranked") mode = "ranked";
 else if(game.mode === "trainOnline") mode = "trainOnline";
 watchMatchInbox();
 
