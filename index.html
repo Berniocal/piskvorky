@@ -264,7 +264,8 @@
 <body>
 
   <!-- SCREEN: NICK -->
-  <div id="scrNick" class="screen">
+  <!-- NOTE: scrNick is active by default so the page isn't black if JS/Firebase fails to load -->
+  <div id="scrNick" class="screen active">
     <div class="wrap">
       <div class="card">
         <h1>Piškvorky</h1>
@@ -1000,7 +1001,7 @@ async function openGameById(id){
     // nastav mode podle hry (jen aby UI/Swap fungoval konzistentně)
     if(game.mode === "ranked") mode = "ranked";
   watchMatchInbox();
-   else if (game.mode === "trainOnline") mode = "trainOnline";
+    else if(game.mode === "trainOnline") mode = "trainOnline";
 
     renderBoard(game.board);
     setHUDFromGame(game);
@@ -1802,7 +1803,28 @@ async function boot(){
   }
   showScreen(scrNick);
 }
-boot();
+// Boot defensively: if Firebase/CDN is blocked, keep at least the first screen visible.
+boot().catch((e)=>{
+  console.error("BOOT FAILED", e);
+  try{ showScreen(scrNick); }catch(_){ /* ignore */ }
+  try{
+    // visible error for users
+    const box = document.createElement('div');
+    box.style.position='fixed';
+    box.style.left='12px';
+    box.style.right='12px';
+    box.style.bottom='12px';
+    box.style.zIndex='99999';
+    box.style.padding='12px 14px';
+    box.style.borderRadius='14px';
+    box.style.background='rgba(239,68,68,0.18)';
+    box.style.outline='1px solid rgba(239,68,68,0.35)';
+    box.style.color='rgba(255,255,255,0.92)';
+    box.style.fontWeight='800';
+    box.textContent='Nepodařilo se spustit aplikaci (Firebase/CDN). Zkus vypnout blokování obsahu nebo jinou síť.';
+    document.body.appendChild(box);
+  }catch(_){ /* ignore */ }
+});
 
 /* ===== Ensure board fills screen nicely ===== */
 function resizeBoardCanvas(){
