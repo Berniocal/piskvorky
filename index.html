@@ -1175,7 +1175,7 @@ async function startRankedQueue(){
   await tryMatchRanked();
 }
 
-async async function tryMatchRanked(){
+async function tryMatchRanked(){
   const q = query(collection(db,"rankedQueue"), orderBy("createdAt","asc"), limit(15));
   const snap = await getDocs(q);
 
